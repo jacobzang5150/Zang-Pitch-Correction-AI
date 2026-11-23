@@ -197,23 +197,27 @@ function refineBlobs(t){
     return pieces;
   });
 }
-function tuneTracks(a){
+function tuneTracks(a,adaptiveTiming=true){
   const guide=chordGuide();
-  let changed=0,held=0,count=0;
+  const backing=tracks[chordSource],attacks=backing?backingAttacks(backing.frames):null;
+  const grid=240/(+$('bpm').value*+$('grid').value);
+  let changed=0,held=0,count=0,drift=0,timing=0;
   for(const t of a){
     refineBlobs(t);
+    if(adaptiveTiming)timing+=correctOnsets(t.notes,t.channels[0].length/t.rate,attacks,grid,+$('timing').value/100);
     const before=t.notes.map(n=>n.pitch);
     tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100,guide);
     t.notes.forEach((n,i)=>{
+      if(n.pitchReview?.reason!=='Review by ear'&&correctDrift(n,t.frames,t.slow,+$('strength').value/100))drift++;
       count++;if(n.pitchLocked||n.pitchReview?.reason==='Review by ear')held++;
       if(Math.abs(n.pitch-before[i])>.0001)changed++;
     });
     invalidate(t);
   }
-  if(a.some(t=>t.notes.some(n=>Math.abs(n.pitch)>.0001))){original=false;$('ab').textContent='Listen: Edited';$('ab').setAttribute('aria-pressed','false');}
+  if(a.some(t=>t.notes.some(edited))){original=false;$('ab').textContent='Listen: Edited';$('ab').setAttribute('aria-pressed','false');}
   if(!count)return 'No pitched notes detected in the checked vocals.';
   const reference=guide?tracks[chordSource].name:'key and scale';
-  return changed+' of '+count+' notes changed against '+reference+' · '+held+' held for review or manually locked.';
+  return changed+' of '+count+' notes changed against '+reference+' · '+drift+' drift edits · '+timing+' timing edits · '+held+' held for review or manually locked.';
 }
 $('tune').onclick=()=>run(()=>{const a=targets();remember();status(tuneTracks(a));});
 $('quant').onclick=()=>run(()=>{const a=targets(),bpm=+$('bpm').value;if(bpm<20||bpm>400)throw Error('Set a tempo between 20 and 400 BPM.');remember();for(const t of a){quantize(t.notes,t.channels[0].length/t.rate,bpm,+$('grid').value,+$('timing').value/100);invalidate(t);}status('Timing pass applied.');});
@@ -225,7 +229,7 @@ $('firstpass').onclick=()=>run(()=>{
     refineBlobs(t);
     quantize(t.notes,t.channels[0].length/t.rate,bpm,+$('grid').value,+$('timing').value/100);
   }
-  status('Timing applied. '+tuneTracks(a));
+  status('Timing applied. '+tuneTracks(a,false));
 });
 $('align').onclick=()=>run(async()=>{
   const guide=tracks[+$('guide').value],a=targets().filter(t=>t!==guide);

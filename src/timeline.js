@@ -20,6 +20,8 @@ function adjust(id,value) {
   if(id==='offset')value=clamp(value,left-n.s,right-(end-start)-n.s);
   if(id==='length')value=clamp(value,.012-(n.e-n.s),right-start-(n.e-n.s));
   n[id]=value;
+  if(id==='drift')n.driftLocked=true;
+  if(['offset','length','handle','attack'].includes(id))n.timingLocked=true;
   if(id==='pitch'){n.pitchLocked=true;delete n.pitchReview;}
   invalidate(t);
 }
@@ -45,7 +47,7 @@ function mergeNext(){
 function keepPitch(){if(note()){remember();adjust('pitch',0);refresh();}}
 function resetNote(){
   const n=note();if(!n)return;remember();
-  Object.assign(n,defaultNote(n.s,n.e,n.p,n.confidence));delete n.pitchLocked;delete n.pitchReview;
+  Object.assign(n,defaultNote(n.s,n.e,n.p,n.confidence));delete n.pitchLocked;delete n.pitchReview;delete n.driftLocked;delete n.timingLocked;delete n.autoOffset;delete n.autoDrift;
   applyTiming(current().notes,current().channels[0].length/current().rate,x=>[x.s+x.offset,x.e+x.offset+x.length]);invalidate(current());refresh();
 }
 function deleteTrack(i){

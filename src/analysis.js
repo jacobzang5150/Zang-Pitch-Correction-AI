@@ -203,6 +203,74 @@ function applyTiming(notes,duration,changes) {
     n.offset=start-n.s;n.length=(end-start)-(n.e-n.s);last=end;
   }
 }
+function correctDrift(note,frames,slow,strength){
+  if(note.driftLocked||note.scoop||note.hard||note.confidence<.78||note.e-note.s<.32)return false;
+  if(note.drift!==1&&note.drift!==note.autoDrift)return false;
+  const values=[];
+  const length=note.e-note.s;
+  for(let i=Math.ceil((note.s+.12*length)/HOP);i*HOP<note.e-.12*length;i++){
+    if(frames[i]?.p&&frames[i].c>.75)values.push(slow[i]);
+  }
+  if(values.length<.55*length/HOP)return false;
+  const third=Math.floor(values.length/3);
+  const a=median(values.slice(0,third)),b=median(values.slice(third,-third)),c=median(values.slice(-third));
+  const drift=Math.abs(c-a);
+  if(drift<.20||drift>1.4||(c-b)*(b-a)<=0)return false;
+  const target=1-strength*clamp((drift-.12)/drift,0,.75);
+  const changed=Math.abs(target-note.drift)>.0001;
+  note.autoDrift=note.drift=target;
+  return changed;
+}
+
+// Use the front edge of distinct backing attacks as possible timing anchors.
+function backingAttacks(frames){
+  const attacks=[];
+  for(let i=2;i+2<frames.length;i++){
+    const low=(frames[i-2].e+frames[i-1].e)/2,high=(frames[i].e+frames[i+1].e)/2;
+    if(high<.004||high<low*1.42||high-low<.002)continue;
+    attacks.push(i*HOP);i+=5;
+  }
+  return attacks;
+}
+function correctOnsets(notes,duration,attacks,grid,strength){
+  const phrases=[];
+  for(let i=0;i<notes.length;){
+    const start=i++;
+    while(i<notes.length&&notes[i].s-notes[i-1].e<.035)i++;
+    const onset=notes[start].s;
+    let anchor=null;
+    if(attacks){
+      let lo=0,hi=attacks.length;
+      while(lo<hi){const mid=(lo+hi)>>1;if(attacks[mid]<onset)lo=mid+1;else hi=mid;}
+      const near=attacks.slice(Math.max(0,lo-1),lo+1).filter(t=>Math.abs(t-onset)<=.095);
+      if(near.length===1)anchor=near[0];
+    }else if(grid>0)anchor=Math.round(onset/grid)*grid;
+    phrases.push({start,end:i,onset,error:anchor===null?null:onset-anchor});
+  }
+  let changed=0;
+  for(let i=0;i<phrases.length;i++){
+    const group=phrases[i],{start,end,onset,error}=group;
+    if(error===null)continue;
+    // Learn the singer's local placement from other onsets in the phrase.
+    const neighbors=phrases.slice(Math.max(0,i-5),i+6).filter(g=>g!==group&&Math.abs(g.onset-onset)<=8&&g.error!==null);
+    if(neighbors.length<3)continue;
+    const pocket=median(neighbors.map(g=>g.error));
+    if(neighbors.filter(g=>Math.abs(g.error-pocket)<=.022).length<Math.ceil(neighbors.length*.70))continue;
+    const miss=pocket-error;
+    if(Math.abs(miss)<.032||Math.abs(miss)>.095)continue;
+    const members=notes.slice(start,end);
+    if(members.some(n=>n.timingLocked||n.length||n.handle||n.attack||(n.offset&&n.offset!==n.autoOffset)))continue;
+    const prev=notes[start-1],next=notes[end],last=members.at(-1);
+    const left=prev?prev.e+prev.offset+prev.length+.002:0,right=next?next.s+next.offset-.002:duration;
+    const offset=clamp(clamp(miss,-.065,.065)*strength,left-onset,right-last.e);
+    for(const n of members){
+      if(Math.abs(n.offset-offset)>.0001)changed++;
+      n.autoOffset=n.offset=offset;
+    }
+  }
+  return changed;
+}
+
 function quantize(notes,duration,bpm,division,strength) {
   const step=60/bpm*4/division;
   applyTiming(notes,duration,n=>{

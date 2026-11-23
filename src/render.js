@@ -174,6 +174,23 @@ function renderTrack(channels,rate,frames,notes) {
   const mono=vocalChannel(channels), marks=pitchMarks(mono,rate,frames), size=mono.length;
   if(notes.every(n=>!n.offset&&!n.length&&!n.handle&&!n.attack&&!n.formant&&!n.sibilant&&!n.gain&&!n.fadeIn&&!n.fadeOut))
     return renderPitchOnly(channels,rate,frames,notes,marks);
+  // Apply pitch once with the smooth renderer, then warp only passages that
+  // moved. A timing edit on one phrase must not change the tone of the rest.
+  if(notes.some(n=>n.autoOffset&&n.autoOffset===n.offset)&&
+     !notes.some(n=>n.formant)&&notes.some(n=>n.pitch||n.mod!==1||n.drift!==1||n.transition)){
+    const tuned=renderPitchOnly(channels,rate,frames,notes,marks);
+    const slow=slowContour(frames);
+    let i=0;
+    const tunedFrames=frames.map((f,k)=>{
+      const time=k*HOP;
+      while(i+1<notes.length&&time>=notes[i].e)i++;
+      const n=notes[i];
+      if(!f.p||time<n.s||time>n.e)return f;
+      return {...f,p:f.p+pitchAdjustment(n,notes[i+1],f.p,slow[k],time,notes[i-1])};
+    });
+    const timingNotes=notes.map(n=>({...n,pitch:0,mod:1,drift:1,transition:0}));
+    return renderTrack(tuned,rate,tunedFrames,timingNotes);
+  }
   const out=channels.map(()=>new Float32Array(size)), weight=new Float32Array(size);
   const gains=new Float32Array(size), dry=new Float32Array(size);
   const params=notes.map((n,i)=>{

@@ -94,6 +94,25 @@ const differences=[];for(let i=1200;i<out.length-1200;i+=120){
     assert.deepEqual(result.slice(rate*.43,rate*.57),testVowel.slice(rate*.43,rate*.57));
     assert.ok(Math.abs(analyze(result,rate).frames[20].p-57.8)<.18);
   }
+  {
+    const n=defaultNote(0,.8,60,.99);
+    const frames=Array.from({length:80},(_,i)=>({p:60+i*.012+.15*Math.sin(i*.4),e:.2,c:.99}));
+    assert.ok(correctDrift(n,frames,slowContour(frames),.85));
+    assert.ok(n.drift<.8 && n.mod===1);
+    assert.equal(correctDrift(n,frames,slowContour(frames),.85),false);
+    const steady=frames.map((f,i)=>({...f,p:60+.18*Math.sin(i*.4)}));
+    assert.equal(correctDrift(defaultNote(0,.8,60,.99),steady,slowContour(steady),1),false);
+    const starts=[.51,1.01,1.57,2.01,2.51,2.94,3.51];
+    const notes=starts.map(s=>defaultNote(s,s+.2,60,.99));
+    const beat=Array.from({length:400},(_,i)=>({e:i%50<4?.15:.01}));
+    const anchors=backingAttacks(beat);
+    assert.equal(correctOnsets(notes,4,anchors,.25,.65),2);
+    assert.ok(notes[2].offset<-.03 && notes[5].offset>.03);
+    assert.equal(correctOnsets(notes,4,anchors,.25,.65),0);
+    notes[2].offset=.015;notes[2].timingLocked=true;
+    correctOnsets(notes,4,anchors,.25,1);assert.equal(notes[2].offset,.015);
+    assert.equal(correctOnsets(notes,4,[],.25,1),0);
+  }
   const original=make(60.31), {frames,notes}=analyze(original,rate);
   assert.equal(notes.length,2);assert.ok(Math.abs(notes[0].p-60.31)<.09);
   assert.equal(renderTrack([original],rate,frames,notes)[0],original);
