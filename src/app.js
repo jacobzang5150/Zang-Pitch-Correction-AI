@@ -9,6 +9,7 @@ const tracks=[],undoStack=[],redoStack=[];
 let chordSource=-1,active=0, selected=-1, position=0, original=false,busy=false,dirty=false, projectTitle='Untitled project';
 let context, playing=false,startClock=0,sources=[],playToken=0, jobSeq=0;
 const workers=new Map();
+const mixerNodes=new Map();
 const workerCode=$('dsp-source').textContent+`
 onmessage=e=>{
   const {id,kind,args}=e.data;
@@ -40,8 +41,9 @@ async function run(fn) {
   try{await fn();}catch(e){status(e.message,true);}finally{busy=false;document.body.classList.remove('working');refresh();}
 }
 function invalidate(t){t.cache=null;dirty=true;}
-function remember() {
-  stop();undoStack.push(tracks.map(t=>structuredClone(t.notes)));if(undoStack.length>40)undoStack.shift();redoStack.length=0;dirty=true;
+function remember(whileEditing=false) {
+  if(!whileEditing)stop();
+  undoStack.push(tracks.map(t=>structuredClone(t.notes)));if(undoStack.length>40)undoStack.shift();redoStack.length=0;dirty=true;
 }
 function history(from,to) {
   if(!from.length)return;stop();to.push(tracks.map(t=>structuredClone(t.notes)));
@@ -51,6 +53,8 @@ function history(from,to) {
 }
 async function prepare(raw,idx) {
   const t={role:'vocal',mute:false,solo:false,selected:true,visible:true,tight:1,...raw,cache:null};
+  t.volume=Number.isFinite(t.volume)?clamp(t.volume,-60,12):0;
+  t.pan=Number.isFinite(t.pan)?clamp(t.pan,-1,1):0;
   status('Analyzing '+t.name+'…');
   t.pitchAnalyzed=t.role==='vocal'||Boolean(raw.notes?.length);
   const x=await dsp('analyze',t.channels[0],t.rate,t.pitchAnalyzed);
@@ -72,24 +76,40 @@ async function rendered(t) {
   return t.cache;
 }
 function stop(keep=true) {
+  stopMonitor();
   if(playing&&keep)position=Math.min(duration(),context.currentTime-startClock);
   playing=false;playToken++;
   for(const s of sources){try{s.stop();}catch{}s.disconnect();}
-  sources=[];$('play').textContent='▶ Play';draw();
+  for(const {level,panner} of mixerNodes.values()){level.disconnect();panner.disconnect();}
+  mixerNodes.clear();sources=[];$('play').textContent='▶ Play';draw();
 }
 function liveTime(){return playing?Math.max(0,context.currentTime-startClock):position;}
+function applyMix(t,initial=false) {
+  const outputs=[mixerNodes.get(t),monitorVoice?.track===t?monitorVoice.audio:null].filter(Boolean);
+  if(!outputs.length)return;
+  const muted=t.mute || (tracks.some(track=>track.solo)&&!t.solo);
+  const volume=muted||t.volume<=-60?0:10**(t.volume/20);
+  const now=context.currentTime;
+  for(const nodes of outputs)for(const [param,value] of [[nodes.level.gain,volume],[nodes.panner.pan,t.pan]]){
+    if(initial)param.setValueAtTime(value,now);
+    else param.setTargetAtTime(value,now,.008);
+  }
+}
 async function play() {
-  if(!tracks.length)return;if(playing){stop();return;}
+  if(!tracks.length)return;stopMonitor();if(playing){stop();return;}
   context??=new AudioContext();await context.resume();
-  const token=++playToken, solo=tracks.some(t=>t.solo), batch=[];
+  const token=++playToken, batch=[];
   if(position>=duration()-.02)position=0;
-  for(const t of tracks.filter(t=>!t.mute&&(!solo||t.solo))){
+  for(const t of tracks){
     status('Preparing playback…');
     const ch=original?t.channels:await rendered(t);if(token!==playToken)return;
     if(position>=ch[0].length/t.rate)continue;
     const buf=context.createBuffer(ch.length,ch[0].length,t.rate);
     ch.forEach((x,i)=>buf.copyToChannel(x,i));
-    const src=context.createBufferSource();src.buffer=buf;src.connect(context.destination);batch.push(src);
+    const src=context.createBufferSource();src.buffer=buf;
+    const level=context.createGain(),panner=context.createStereoPanner();
+    mixerNodes.set(t,{level,panner});applyMix(t,true);
+    src.connect(level).connect(panner).connect(context.destination);batch.push(src);
   }
   if(!batch.length){status('No audible tracks at the cursor.');return;}
   const when=context.currentTime+.04;startClock=when-position;sources=batch;playing=true;
@@ -194,6 +214,7 @@ names.forEach((n,i)=>$('root').add(opt(n,i)));
 window.onbeforeunload=e=>{if(dirty&&tracks.length){e.preventDefault();e.returnValue='';}};
 window.addEventListener('keydown',e=>{
   if(busy||['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;
+  if(e.target.closest('#toolPalette,[role=slider],button,summary'))return;
   if(e.code==='Space'){e.preventDefault();run(play);}
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?history(redoStack,undoStack):history(undoStack,redoStack);}
 });

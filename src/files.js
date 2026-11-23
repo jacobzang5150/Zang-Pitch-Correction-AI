@@ -76,7 +76,7 @@ function zipStems(files) {
 function projectBlob(tracks,settings) {
   const metadata={format:'ZangPitchProject',version:1,settings,tracks:tracks.map(t=>({
     name:t.name,rate:t.rate,n:t.channels[0].length,ch:t.channels.length,notes:t.notes,
-    mute:t.mute,solo:t.solo,selected:t.selected,visible:t.visible,tight:t.tight,role:t.role
+    volume:t.volume,pan:t.pan,mute:t.mute,solo:t.solo,selected:t.selected,visible:t.visible,tight:t.tight,role:t.role
   }))};
   const json=encoder.encode(JSON.stringify(metadata)),size=new Uint8Array(4);
   new DataView(size.buffer).setUint32(0,json.length,true);
