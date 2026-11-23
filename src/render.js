@@ -93,10 +93,60 @@ function pitchAdjustment(n,next,pitch,slowPitch,sec,previous) {
   return shift;
 }
 
+// For pitch-only edits, fit the synthesis cycles between two actual source
+// marks. Both ends then meet the dry signal at the same waveform phase.
+function renderPitchOnly(channels,rate,frames,notes,marks){
+  const out=channels.map(ch=>ch.slice()),slow=slowContour(frames);
+  const cycles=new Float64Array(marks.length);
+  let noteIndex=0;
+  for(let i=0;i+1<marks.length;i++){
+    const t=(marks[i]+marks[i+1])/(2*rate);
+    while(noteIndex+1<notes.length&&notes[noteIndex].e<t)noteIndex++;
+    const n=notes[noteIndex],k=clamp(Math.round(t/HOP),0,frames.length-1),f=frames[k];
+    const shift=f.p&&t>=n.s&&t<=n.e?pitchAdjustment(n,notes[noteIndex+1],f.p,slow[k],t,notes[noteIndex-1]):0;
+    cycles[i]=2**(shift/12);
+  }
+  let first=0;
+  while(first+1<marks.length){
+    if(Math.abs(cycles[first]-1)<1e-7){first++;continue;}
+    let end=first,total=0;
+    while(end+1<marks.length&&Math.abs(cycles[end]-1)>=1e-7)total+=cycles[end++];
+    const count=Math.max(1,Math.round(total)),left=marks[first],right=marks[end];
+    if(count!==end-first||end-first>2){
+      const weights=new Float32Array(right-left);
+      const sums=channels.map(()=>new Float32Array(right-left));
+      let source=first,accum=0;
+      for(let k=0;k<=count;k++){
+        const targetPhase=k*total/count;
+        while(source+1<end&&accum+cycles[source]<targetPhase){accum+=cycles[source++];}
+        const u=clamp((targetPhase-accum)/cycles[source],0,1);
+        const target=marks[source]+u*(marks[source+1]-marks[source]);
+        const center=marks[source+(u>.5?1:0)],period=marks[source+1]-marks[source];
+        const radius=Math.max(period,period*total/(count*cycles[source]))*1.25;
+        for(let j=Math.max(left,Math.ceil(target-radius));j<Math.min(right,target+radius);j++){
+          const d=j-target,position=clamp(center+d,0,out[0].length-1);
+          const a=Math.floor(position),b=Math.min(a+1,out[0].length-1),mix=position-a;
+          const weight=.5+.5*Math.cos(Math.PI*d/radius);
+          weights[j-left]+=weight;
+          for(let ch=0;ch<out.length;ch++)sums[ch][j-left]+=weight*(channels[ch][a]+mix*(channels[ch][b]-channels[ch][a]));
+        }
+      }
+      for(let j=left;j<right;j++){
+        const w=weights[j-left];
+        if(w>0)for(let ch=0;ch<out.length;ch++)out[ch][j]=sums[ch][j-left]/w;
+      }
+    }
+    first=end;
+  }
+  return out;
+}
+
 function renderTrack(channels,rate,frames,notes) {
   if(!notes.some(edited))return channels;
   const duration=channels[0].length/rate, map=timeMap(notes,duration);
   const mono=vocalChannel(channels), marks=pitchMarks(mono,rate,frames), size=mono.length;
+  if(notes.every(n=>!n.offset&&!n.length&&!n.handle&&!n.attack&&!n.formant&&!n.sibilant&&!n.gain&&!n.fadeIn&&!n.fadeOut))
+    return renderPitchOnly(channels,rate,frames,notes,marks);
   const out=channels.map(()=>new Float32Array(size)), weight=new Float32Array(size);
   const gains=new Float32Array(size), dry=new Float32Array(size);
   const params=notes.map((n,i)=>{
