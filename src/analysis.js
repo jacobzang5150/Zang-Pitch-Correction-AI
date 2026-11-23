@@ -81,28 +81,61 @@ function boundaryScore(frames,i) {
 }
 function segment(frames,duration) {
   const notes=[];
-  function add(a,b) {
-    if(b-a<5) return;
-    const span=frames.slice(a,b);
-    notes.push(defaultNote(a*HOP,Math.min(duration,b*HOP),median(span.map(f=>f.p)),mean(span.map(f=>f.c))));
+  function addRun(first,end){
+    if(end-first<5)return;
+    const framesInRun=frames.slice(first,end);
+    const contour=framesInRun.map((f,i)=>median(framesInRun.slice(Math.max(0,i-2),i+3).map(v=>v.p)));
+    // Compare sustained pitch centers. Vibrato and brief overshoots should not
+    // turn into a chain of short notes.
+    const plateaus=[];
+    let anchor=null;
+    for(let i=0;i+8<=contour.length;i++){
+      const window=contour.slice(i,i+8),center=median(window);
+      if(Math.max(...window)-Math.min(...window)>.86)continue;
+      if(!anchor||Math.abs(center-anchor.pitch)>.72){
+        if(anchor&&i<anchor.end)continue;
+        anchor={start:i,end:i+8,pitch:center};plateaus.push(anchor);
+      }else anchor.end=i+8;
+    }
+    const cuts=[0];
+    const landing=plateaus[0];
+    let scoop=false;
+    if(landing&&landing.start>=6&&landing.start<=35){
+      const origin=median(contour.slice(0,3)),distance=landing.pitch-origin;
+      const progress=contour.slice(0,landing.start+1).map(p=>(p-origin)*Math.sign(distance));
+      const backwards=progress.slice(1).reduce((sum,v,i)=>sum+Math.max(0,progress[i]-v),0);
+      if(Math.abs(distance)>1.15&&backwards<Math.abs(distance)*.35){
+        cuts.push(landing.start);scoop=true;
+      }
+    }
+    for(let i=1;i<plateaus.length;i++){
+      const left=plateaus[i-1],right=plateaus[i],middle=(left.pitch+right.pitch)/2;
+      let cut=left.end;
+      while(cut<right.start&&(contour[cut]-middle)*(right.pitch-left.pitch)<0)cut++;
+      if(cut-cuts.at(-1)>=5)cuts.push(cut);
+    }
+    // Retain a same-pitch rearticulation when there is an actual energy dip.
+    for(let i=7;i+7<contour.length;i++){
+      const energy=frames[first+i].e;
+      if(energy>.55*Math.min(frames[first+i-4].e,frames[first+i+4].e))continue;
+      if(boundaryScore(frames,first+i)>1.8&&cuts.every(c=>Math.abs(c-i)>=7))cuts.push(i);
+    }
+    cuts.sort((a,b)=>a-b);cuts.push(contour.length);
+    for(let i=0;i+1<cuts.length;i++){
+      const a=cuts[i],b=cuts[i+1],span=framesInRun.slice(a,b);
+      const settled=contour.slice(a,b).filter((_,j)=>j>=Math.floor((b-a)*.15)&&j<(b-a)*.9);
+      const n=defaultNote((first+a)*HOP,Math.min(duration,(first+b)*HOP),median(settled),mean(span.map(f=>f.c)));
+      n.contourVersion=2;
+      if(scoop&&i===0)n.scoop=true;
+      notes.push(n);
+    }
   }
   let i=0;
-  while(i<frames.length) {
-    if(!frames[i].p) {i++;continue;}
+  while(i<frames.length){
+    if(!frames[i].p){i++;continue;}
     const first=i;
-    while(i<frames.length && frames[i].p) i++;
-    let a=first;
-    for(let j=first+6;j<i-6;j++) {
-      let best=j,score=boundaryScore(frames,j);
-      if(score<1.8) continue;
-      for(let k=j+1;k<=Math.min(i-7,j+5);k++) {
-        const v=boundaryScore(frames,k);
-        if(v>score) {score=v;best=k;}
-      }
-      if(best-a>=6){add(a,best);a=best;}
-      j=best+4;
-    }
-    add(a,i);
+    while(i<frames.length&&frames[i].p)i++;
+    addRun(first,i);
   }
   return notes;
 }
@@ -124,7 +157,7 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
       // Keep a clearly sung extension or passing note eligible, including borrowed tones.
       const distance=Math.abs(p-n.p);
       if(guide ? distance<=1.05 : inScale) {
-        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale?0:.035) : tones ? .55*(1-tones[(p+120)%12])+(inScale?0:.035) : 0;
+        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale||inChord?0:.55*chord.confidence) : tones ? .55*(1-tones[(p+120)%12])+(inScale?0:.035) : 0;
         targets.push({p,cost:0,prev:0,harmonicCost,chord});
       }
     }
@@ -147,6 +180,10 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
       n.pitch=guide&&Math.abs(delta)<.08?0:delta*strength;
       if(guide)n.pitchReview=s.chord?{root:s.chord.root,suffix:s.chord.suffix,target:s.p}:{source:'backing tones',target:s.p};
       else {delete n.pitchReview;delete n.pitchLocked;}
+    }
+    if(n.scoop&&!n.pitchLocked&&!notes[i+1]?.pitchReview?.reason&&notes[i+1]&&Math.abs(n.e-notes[i+1].s)<.001){
+      n.pitch=notes[i+1].pitch;
+      n.pitchReview={reason:'Scoop follows landing'};
     }
     j=s.prev;
   }

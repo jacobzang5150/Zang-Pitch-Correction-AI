@@ -115,7 +115,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 -->
 </head><body>
-<header><div class="brand"><b class="mark" aria-hidden="true">∿</b><div><h1>Zang <span>Pitch Correction</span></h1><small>STANDALONE BETA · 0.5</small></div></div>
+<header><div class="brand"><b class="mark" aria-hidden="true">∿</b><div><h1>Zang <span>Pitch Correction</span></h1><small>STANDALONE BETA · 0.6</small></div></div>
 <nav><details class="projectMenu"><summary>Project</summary><div><button id="newProject">New project</button><button id="openProject">Open project</button><button id="stem">Export active WAV</button></div></details><button id="save">Save project</button><button id="export" class="accent">Export stems ↗</button></nav></header>
 <div class="layout"><aside><div class="section"><h2>Mixer</h2><span id="trackCount">0</span></div>
 <div id="tracks"></div>
@@ -217,28 +217,61 @@ function boundaryScore(frames,i) {
 }
 function segment(frames,duration) {
   const notes=[];
-  function add(a,b) {
-    if(b-a<5) return;
-    const span=frames.slice(a,b);
-    notes.push(defaultNote(a*HOP,Math.min(duration,b*HOP),median(span.map(f=>f.p)),mean(span.map(f=>f.c))));
+  function addRun(first,end){
+    if(end-first<5)return;
+    const framesInRun=frames.slice(first,end);
+    const contour=framesInRun.map((f,i)=>median(framesInRun.slice(Math.max(0,i-2),i+3).map(v=>v.p)));
+    // Compare sustained pitch centers. Vibrato and brief overshoots should not
+    // turn into a chain of short notes.
+    const plateaus=[];
+    let anchor=null;
+    for(let i=0;i+8<=contour.length;i++){
+      const window=contour.slice(i,i+8),center=median(window);
+      if(Math.max(...window)-Math.min(...window)>.86)continue;
+      if(!anchor||Math.abs(center-anchor.pitch)>.72){
+        if(anchor&&i<anchor.end)continue;
+        anchor={start:i,end:i+8,pitch:center};plateaus.push(anchor);
+      }else anchor.end=i+8;
+    }
+    const cuts=[0];
+    const landing=plateaus[0];
+    let scoop=false;
+    if(landing&&landing.start>=6&&landing.start<=35){
+      const origin=median(contour.slice(0,3)),distance=landing.pitch-origin;
+      const progress=contour.slice(0,landing.start+1).map(p=>(p-origin)*Math.sign(distance));
+      const backwards=progress.slice(1).reduce((sum,v,i)=>sum+Math.max(0,progress[i]-v),0);
+      if(Math.abs(distance)>1.15&&backwards<Math.abs(distance)*.35){
+        cuts.push(landing.start);scoop=true;
+      }
+    }
+    for(let i=1;i<plateaus.length;i++){
+      const left=plateaus[i-1],right=plateaus[i],middle=(left.pitch+right.pitch)/2;
+      let cut=left.end;
+      while(cut<right.start&&(contour[cut]-middle)*(right.pitch-left.pitch)<0)cut++;
+      if(cut-cuts.at(-1)>=5)cuts.push(cut);
+    }
+    // Retain a same-pitch rearticulation when there is an actual energy dip.
+    for(let i=7;i+7<contour.length;i++){
+      const energy=frames[first+i].e;
+      if(energy>.55*Math.min(frames[first+i-4].e,frames[first+i+4].e))continue;
+      if(boundaryScore(frames,first+i)>1.8&&cuts.every(c=>Math.abs(c-i)>=7))cuts.push(i);
+    }
+    cuts.sort((a,b)=>a-b);cuts.push(contour.length);
+    for(let i=0;i+1<cuts.length;i++){
+      const a=cuts[i],b=cuts[i+1],span=framesInRun.slice(a,b);
+      const settled=contour.slice(a,b).filter((_,j)=>j>=Math.floor((b-a)*.15)&&j<(b-a)*.9);
+      const n=defaultNote((first+a)*HOP,Math.min(duration,(first+b)*HOP),median(settled),mean(span.map(f=>f.c)));
+      n.contourVersion=2;
+      if(scoop&&i===0)n.scoop=true;
+      notes.push(n);
+    }
   }
   let i=0;
-  while(i<frames.length) {
-    if(!frames[i].p) {i++;continue;}
+  while(i<frames.length){
+    if(!frames[i].p){i++;continue;}
     const first=i;
-    while(i<frames.length && frames[i].p) i++;
-    let a=first;
-    for(let j=first+6;j<i-6;j++) {
-      let best=j,score=boundaryScore(frames,j);
-      if(score<1.8) continue;
-      for(let k=j+1;k<=Math.min(i-7,j+5);k++) {
-        const v=boundaryScore(frames,k);
-        if(v>score) {score=v;best=k;}
-      }
-      if(best-a>=6){add(a,best);a=best;}
-      j=best+4;
-    }
-    add(a,i);
+    while(i<frames.length&&frames[i].p)i++;
+    addRun(first,i);
   }
   return notes;
 }
@@ -260,7 +293,7 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
       // Keep a clearly sung extension or passing note eligible, including borrowed tones.
       const distance=Math.abs(p-n.p);
       if(guide ? distance<=1.05 : inScale) {
-        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale?0:.035) : tones ? .55*(1-tones[(p+120)%12])+(inScale?0:.035) : 0;
+        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale||inChord?0:.55*chord.confidence) : tones ? .55*(1-tones[(p+120)%12])+(inScale?0:.035) : 0;
         targets.push({p,cost:0,prev:0,harmonicCost,chord});
       }
     }
@@ -283,6 +316,10 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
       n.pitch=guide&&Math.abs(delta)<.08?0:delta*strength;
       if(guide)n.pitchReview=s.chord?{root:s.chord.root,suffix:s.chord.suffix,target:s.p}:{source:'backing tones',target:s.p};
       else {delete n.pitchReview;delete n.pitchLocked;}
+    }
+    if(n.scoop&&!n.pitchLocked&&!notes[i+1]?.pitchReview?.reason&&notes[i+1]&&Math.abs(n.e-notes[i+1].s)<.001){
+      n.pitch=notes[i+1].pitch;
+      n.pitchReview={reason:'Scoop follows landing'};
     }
     j=s.prev;
   }
@@ -690,28 +727,61 @@ function boundaryScore(frames,i) {
 }
 function segment(frames,duration) {
   const notes=[];
-  function add(a,b) {
-    if(b-a<5) return;
-    const span=frames.slice(a,b);
-    notes.push(defaultNote(a*HOP,Math.min(duration,b*HOP),median(span.map(f=>f.p)),mean(span.map(f=>f.c))));
+  function addRun(first,end){
+    if(end-first<5)return;
+    const framesInRun=frames.slice(first,end);
+    const contour=framesInRun.map((f,i)=>median(framesInRun.slice(Math.max(0,i-2),i+3).map(v=>v.p)));
+    // Compare sustained pitch centers. Vibrato and brief overshoots should not
+    // turn into a chain of short notes.
+    const plateaus=[];
+    let anchor=null;
+    for(let i=0;i+8<=contour.length;i++){
+      const window=contour.slice(i,i+8),center=median(window);
+      if(Math.max(...window)-Math.min(...window)>.86)continue;
+      if(!anchor||Math.abs(center-anchor.pitch)>.72){
+        if(anchor&&i<anchor.end)continue;
+        anchor={start:i,end:i+8,pitch:center};plateaus.push(anchor);
+      }else anchor.end=i+8;
+    }
+    const cuts=[0];
+    const landing=plateaus[0];
+    let scoop=false;
+    if(landing&&landing.start>=6&&landing.start<=35){
+      const origin=median(contour.slice(0,3)),distance=landing.pitch-origin;
+      const progress=contour.slice(0,landing.start+1).map(p=>(p-origin)*Math.sign(distance));
+      const backwards=progress.slice(1).reduce((sum,v,i)=>sum+Math.max(0,progress[i]-v),0);
+      if(Math.abs(distance)>1.15&&backwards<Math.abs(distance)*.35){
+        cuts.push(landing.start);scoop=true;
+      }
+    }
+    for(let i=1;i<plateaus.length;i++){
+      const left=plateaus[i-1],right=plateaus[i],middle=(left.pitch+right.pitch)/2;
+      let cut=left.end;
+      while(cut<right.start&&(contour[cut]-middle)*(right.pitch-left.pitch)<0)cut++;
+      if(cut-cuts.at(-1)>=5)cuts.push(cut);
+    }
+    // Retain a same-pitch rearticulation when there is an actual energy dip.
+    for(let i=7;i+7<contour.length;i++){
+      const energy=frames[first+i].e;
+      if(energy>.55*Math.min(frames[first+i-4].e,frames[first+i+4].e))continue;
+      if(boundaryScore(frames,first+i)>1.8&&cuts.every(c=>Math.abs(c-i)>=7))cuts.push(i);
+    }
+    cuts.sort((a,b)=>a-b);cuts.push(contour.length);
+    for(let i=0;i+1<cuts.length;i++){
+      const a=cuts[i],b=cuts[i+1],span=framesInRun.slice(a,b);
+      const settled=contour.slice(a,b).filter((_,j)=>j>=Math.floor((b-a)*.15)&&j<(b-a)*.9);
+      const n=defaultNote((first+a)*HOP,Math.min(duration,(first+b)*HOP),median(settled),mean(span.map(f=>f.c)));
+      n.contourVersion=2;
+      if(scoop&&i===0)n.scoop=true;
+      notes.push(n);
+    }
   }
   let i=0;
-  while(i<frames.length) {
-    if(!frames[i].p) {i++;continue;}
+  while(i<frames.length){
+    if(!frames[i].p){i++;continue;}
     const first=i;
-    while(i<frames.length && frames[i].p) i++;
-    let a=first;
-    for(let j=first+6;j<i-6;j++) {
-      let best=j,score=boundaryScore(frames,j);
-      if(score<1.8) continue;
-      for(let k=j+1;k<=Math.min(i-7,j+5);k++) {
-        const v=boundaryScore(frames,k);
-        if(v>score) {score=v;best=k;}
-      }
-      if(best-a>=6){add(a,best);a=best;}
-      j=best+4;
-    }
-    add(a,i);
+    while(i<frames.length&&frames[i].p)i++;
+    addRun(first,i);
   }
   return notes;
 }
@@ -733,7 +803,7 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
       // Keep a clearly sung extension or passing note eligible, including borrowed tones.
       const distance=Math.abs(p-n.p);
       if(guide ? distance<=1.05 : inScale) {
-        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale?0:.035) : tones ? .55*(1-tones[(p+120)%12])+(inScale?0:.035) : 0;
+        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale||inChord?0:.55*chord.confidence) : tones ? .55*(1-tones[(p+120)%12])+(inScale?0:.035) : 0;
         targets.push({p,cost:0,prev:0,harmonicCost,chord});
       }
     }
@@ -756,6 +826,10 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
       n.pitch=guide&&Math.abs(delta)<.08?0:delta*strength;
       if(guide)n.pitchReview=s.chord?{root:s.chord.root,suffix:s.chord.suffix,target:s.p}:{source:'backing tones',target:s.p};
       else {delete n.pitchReview;delete n.pitchLocked;}
+    }
+    if(n.scoop&&!n.pitchLocked&&!notes[i+1]?.pitchReview?.reason&&notes[i+1]&&Math.abs(n.e-notes[i+1].s)<.001){
+      n.pitch=notes[i+1].pitch;
+      n.pitchReview={reason:'Scoop follows landing'};
     }
     j=s.prev;
   }
@@ -1367,14 +1441,30 @@ $('export').onclick=()=>run(async()=>{
   download(zipStems(files),safeName(projectTitle)+' - stems.zip');status('Exported '+files.length+' time-aligned, 24-bit WAV stems.');
 });
 $('stem').onclick=()=>run(async()=>{const t=current();if(t){download(new Blob([wavBytes(await rendered(t),t.rate)],{type:'audio/wav'}),safeName(t.name)+' - edited.wav');status('Active stem exported.');}});
+function refineBlobs(t){
+  t.notes=t.notes.flatMap(n=>{
+    if(n.contourVersion===2||n.pitchLocked||n.hard||edited({...n,pitch:n.pitchReview?0:n.pitch}))return [n];
+    const first=Math.max(0,Math.round(n.s/HOP)),end=Math.min(t.frames.length,Math.round(n.e/HOP));
+    const pieces=segment(t.frames.slice(first,end),n.e-first*HOP);
+    if(pieces.length<2){
+      if(pieces.length&&!n.pitch)n.p=pieces[0].p;
+      n.contourVersion=2;
+      return [n];
+    }
+    for(const piece of pieces){piece.s+=first*HOP;piece.e+=first*HOP;}
+    pieces[0].s=n.s;pieces.at(-1).e=n.e;
+    return pieces;
+  });
+}
 function tuneTracks(a){
   const guide=chordGuide();
   let changed=0,held=0,count=0;
   for(const t of a){
+    refineBlobs(t);
     const before=t.notes.map(n=>n.pitch);
     tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100,guide);
     t.notes.forEach((n,i)=>{
-      count++;if(n.pitchLocked||n.pitchReview?.reason)held++;
+      count++;if(n.pitchLocked||n.pitchReview?.reason==='Review by ear')held++;
       if(Math.abs(n.pitch-before[i])>.0001)changed++;
     });
     invalidate(t);
@@ -1391,6 +1481,7 @@ $('firstpass').onclick=()=>run(()=>{
   if(bpm<20||bpm>400)throw Error('Set a tempo between 20 and 400 BPM.');
   remember();
   for(const t of a){
+    refineBlobs(t);
     quantize(t.notes,t.channels[0].length/t.rate,bpm,+$('grid').value,+$('timing').value/100);
   }
   status('Timing applied. '+tuneTracks(a));
@@ -1662,7 +1753,8 @@ function splitNote(at) {
   const len=n.e-n.s+n.length,u=clamp((at-n.s-n.offset)/len,0,1),src=n.s+u*(n.e-n.s);
   if(src-n.s<.025||n.e-src<.025){status('Place the cursor at least 25 ms inside the note.',true);return;}
   remember();
-  const left={...n,e:src,length:n.length*u},right={...n,s:src,offset:at-src,length:n.length*(1-u)};
+  const left={...n,contourVersion:2,e:src,length:n.length*u},right={...n,contourVersion:2,s:src,offset:at-src,length:n.length*(1-u)};
+  delete left.scoop;delete right.scoop;
   for(const part of [left,right]){
     const pitches=t.frames.slice(Math.ceil(part.s/HOP),Math.ceil(part.e/HOP)).filter(f=>f.p).map(f=>f.p);
     if(pitches.length)part.p=median(pitches);
@@ -1671,7 +1763,7 @@ function splitNote(at) {
 }
 function mergeNext(){
   const t=current(),n=note(),next=t?.notes[selected+1];if(!n||!next)return;
-  remember();const end=next.e+next.offset+next.length;n.e=next.e;n.length=end-n.offset-n.e;
+  remember();const end=next.e+next.offset+next.length;n.contourVersion=2;delete n.scoop;n.e=next.e;n.length=end-n.offset-n.e;
   n.p=median(t.frames.slice(Math.ceil(n.s/HOP),Math.ceil(n.e/HOP)).filter(f=>f.p).map(f=>f.p))||n.p;
   t.notes.splice(selected+1,1);invalidate(t);refresh();
 }
@@ -1774,7 +1866,7 @@ function draw(){
   const step=[.025,.05,.1,.25,.5,1,2,5,10,20,30,60,120,300,600].find(s=>s*scale>62)||1200;
   ctx.font='10px monospace';ctx.lineWidth=1;
   for(let t=Math.max(0,Math.ceil(origin/step)*step);t<=origin+span+.0001;t+=step){
-    ctx.fillStyle='#a4afaa';ctx.fillText(seconds(t),x(t)+3,16);ctx.strokeStyle='#282830';ctx.beginPath();ctx.moveTo(x(t),top);ctx.lineTo(x(t),height);ctx.stroke();
+    ctx.fillStyle='#a4afaa';ctx.fillText(seconds(t),x(t)+3,16);
   }
   const harmony=chordGuide();
   if(harmony){
@@ -1796,6 +1888,23 @@ function draw(){
     return [Math.floor(lo)-3,Math.max(Math.floor(lo)+9,Math.ceil(hi)+3)];
   };
   const common=pitchRange(visible);
+  // Paint keyboard bands behind the time grid, contours and note blobs.
+  const accidental=[false,true,false,true,false,false,true,false,true,false,true,false];
+  visible.forEach(({t},index)=>{
+    if(overlay&&index)return;
+    if(overlay?!visible.some(v=>v.t.role==='vocal'):t.role!=='vocal')return;
+    const y0=top+(overlay?0:index*h),[lo,hi]=overlay?common:pitchRange([{t}]),unit=(h-21)/(hi-lo+1);
+    for(let p=lo;p<=hi;p++){
+      const center=y0+h-9-(p-lo)*unit+pitchPan;
+      const y1=Math.max(y0,Math.round(center-unit/2)),y2=Math.min(y0+h,Math.round(center+unit/2));
+      if(y2<=y1)continue;
+      ctx.fillStyle=accidental[(p%12+12)%12]?'#29292f':'#16161b';
+      ctx.fillRect(0,y1,width,y2-y1);
+    }
+  });
+  ctx.strokeStyle='#323239';ctx.beginPath();
+  for(let t=Math.max(0,Math.ceil(origin/step)*step);t<=origin+span+.0001;t+=step){ctx.moveTo(x(t),top);ctx.lineTo(x(t),height);}
+  ctx.stroke();
   visible.forEach(({t,i},index)=>{
     const y0=top+(overlay?0:index*h),[lo,hi]=overlay?common:pitchRange([{t}]),unit=(h-21)/(hi-lo+1);
     const y=p=>y0+h-9-(p-lo)*unit+pitchPan;

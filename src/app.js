@@ -182,14 +182,30 @@ $('export').onclick=()=>run(async()=>{
   download(zipStems(files),safeName(projectTitle)+' - stems.zip');status('Exported '+files.length+' time-aligned, 24-bit WAV stems.');
 });
 $('stem').onclick=()=>run(async()=>{const t=current();if(t){download(new Blob([wavBytes(await rendered(t),t.rate)],{type:'audio/wav'}),safeName(t.name)+' - edited.wav');status('Active stem exported.');}});
+function refineBlobs(t){
+  t.notes=t.notes.flatMap(n=>{
+    if(n.contourVersion===2||n.pitchLocked||n.hard||edited({...n,pitch:n.pitchReview?0:n.pitch}))return [n];
+    const first=Math.max(0,Math.round(n.s/HOP)),end=Math.min(t.frames.length,Math.round(n.e/HOP));
+    const pieces=segment(t.frames.slice(first,end),n.e-first*HOP);
+    if(pieces.length<2){
+      if(pieces.length&&!n.pitch)n.p=pieces[0].p;
+      n.contourVersion=2;
+      return [n];
+    }
+    for(const piece of pieces){piece.s+=first*HOP;piece.e+=first*HOP;}
+    pieces[0].s=n.s;pieces.at(-1).e=n.e;
+    return pieces;
+  });
+}
 function tuneTracks(a){
   const guide=chordGuide();
   let changed=0,held=0,count=0;
   for(const t of a){
+    refineBlobs(t);
     const before=t.notes.map(n=>n.pitch);
     tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100,guide);
     t.notes.forEach((n,i)=>{
-      count++;if(n.pitchLocked||n.pitchReview?.reason)held++;
+      count++;if(n.pitchLocked||n.pitchReview?.reason==='Review by ear')held++;
       if(Math.abs(n.pitch-before[i])>.0001)changed++;
     });
     invalidate(t);
@@ -206,6 +222,7 @@ $('firstpass').onclick=()=>run(()=>{
   if(bpm<20||bpm>400)throw Error('Set a tempo between 20 and 400 BPM.');
   remember();
   for(const t of a){
+    refineBlobs(t);
     quantize(t.notes,t.channels[0].length/t.rate,bpm,+$('grid').value,+$('timing').value/100);
   }
   status('Timing applied. '+tuneTracks(a));

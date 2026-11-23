@@ -12,6 +12,23 @@ vm.runInNewContext(engine+`(async()=>{
     }
     return audio;
   };
+  let phase=0;
+  const sung=Float32Array.from({length:rate},(_,i)=>{
+    const t=i/rate,p=t<.16?57.3+3*t/.16:t<.50?60.3:t<.72?62.3:64.3;
+    phase+=2*Math.PI*midiHz(p+.15*Math.sin(30*t))/rate;
+    return .4*Math.sin(phase);
+  });
+  const run=analyze(sung,rate);
+  assert.equal(run.notes.length,4);assert.ok(run.notes[0].scoop);
+  const band=backingHarmony([Float32Array.from({length:rate},(_,i)=>
+    [48,52,55].reduce((sum,p)=>sum+.18*Math.sin(2*Math.PI*midiHz(p)*i/rate),0))],rate);
+  tuneNotes(run.notes,0,'major',1,band);
+  assert.deepEqual(run.notes.slice(1).map(n=>n.pitchReview.target),[60,62,64]);
+  assert.equal(run.notes[0].pitch,run.notes[1].pitch);
+  const playback=analyze(renderTrack([sung],rate,run.frames,run.notes)[0],rate).frames;
+  for(const [i,p] of [[32,60],[61,62],[83,64]])assert.ok(Math.abs(playback[i].p-p)<.22);
+  const wobble=Array.from({length:80},(_,i)=>({p:60+.32*Math.sin(i*.36)+(i===42?3:0),c:.97,e:.2}));
+  assert.equal(segment(wobble,.8).length,1,'vibrato and a brief overshoot stay together');
   const original=make(60.31), {frames,notes}=analyze(original,rate);
   assert.equal(notes.length,2);assert.ok(Math.abs(notes[0].p-60.31)<.09);
   assert.equal(renderTrack([original],rate,frames,notes)[0],original);

@@ -28,7 +28,8 @@ function splitNote(at) {
   const len=n.e-n.s+n.length,u=clamp((at-n.s-n.offset)/len,0,1),src=n.s+u*(n.e-n.s);
   if(src-n.s<.025||n.e-src<.025){status('Place the cursor at least 25 ms inside the note.',true);return;}
   remember();
-  const left={...n,e:src,length:n.length*u},right={...n,s:src,offset:at-src,length:n.length*(1-u)};
+  const left={...n,contourVersion:2,e:src,length:n.length*u},right={...n,contourVersion:2,s:src,offset:at-src,length:n.length*(1-u)};
+  delete left.scoop;delete right.scoop;
   for(const part of [left,right]){
     const pitches=t.frames.slice(Math.ceil(part.s/HOP),Math.ceil(part.e/HOP)).filter(f=>f.p).map(f=>f.p);
     if(pitches.length)part.p=median(pitches);
@@ -37,7 +38,7 @@ function splitNote(at) {
 }
 function mergeNext(){
   const t=current(),n=note(),next=t?.notes[selected+1];if(!n||!next)return;
-  remember();const end=next.e+next.offset+next.length;n.e=next.e;n.length=end-n.offset-n.e;
+  remember();const end=next.e+next.offset+next.length;n.contourVersion=2;delete n.scoop;n.e=next.e;n.length=end-n.offset-n.e;
   n.p=median(t.frames.slice(Math.ceil(n.s/HOP),Math.ceil(n.e/HOP)).filter(f=>f.p).map(f=>f.p))||n.p;
   t.notes.splice(selected+1,1);invalidate(t);refresh();
 }
@@ -140,7 +141,7 @@ function draw(){
   const step=[.025,.05,.1,.25,.5,1,2,5,10,20,30,60,120,300,600].find(s=>s*scale>62)||1200;
   ctx.font='10px monospace';ctx.lineWidth=1;
   for(let t=Math.max(0,Math.ceil(origin/step)*step);t<=origin+span+.0001;t+=step){
-    ctx.fillStyle='#a4afaa';ctx.fillText(seconds(t),x(t)+3,16);ctx.strokeStyle='#282830';ctx.beginPath();ctx.moveTo(x(t),top);ctx.lineTo(x(t),height);ctx.stroke();
+    ctx.fillStyle='#a4afaa';ctx.fillText(seconds(t),x(t)+3,16);
   }
   const harmony=chordGuide();
   if(harmony){
@@ -162,6 +163,23 @@ function draw(){
     return [Math.floor(lo)-3,Math.max(Math.floor(lo)+9,Math.ceil(hi)+3)];
   };
   const common=pitchRange(visible);
+  // Paint keyboard bands behind the time grid, contours and note blobs.
+  const accidental=[false,true,false,true,false,false,true,false,true,false,true,false];
+  visible.forEach(({t},index)=>{
+    if(overlay&&index)return;
+    if(overlay?!visible.some(v=>v.t.role==='vocal'):t.role!=='vocal')return;
+    const y0=top+(overlay?0:index*h),[lo,hi]=overlay?common:pitchRange([{t}]),unit=(h-21)/(hi-lo+1);
+    for(let p=lo;p<=hi;p++){
+      const center=y0+h-9-(p-lo)*unit+pitchPan;
+      const y1=Math.max(y0,Math.round(center-unit/2)),y2=Math.min(y0+h,Math.round(center+unit/2));
+      if(y2<=y1)continue;
+      ctx.fillStyle=accidental[(p%12+12)%12]?'#29292f':'#16161b';
+      ctx.fillRect(0,y1,width,y2-y1);
+    }
+  });
+  ctx.strokeStyle='#323239';ctx.beginPath();
+  for(let t=Math.max(0,Math.ceil(origin/step)*step);t<=origin+span+.0001;t+=step){ctx.moveTo(x(t),top);ctx.lineTo(x(t),height);}
+  ctx.stroke();
   visible.forEach(({t,i},index)=>{
     const y0=top+(overlay?0:index*h),[lo,hi]=overlay?common:pitchRange([{t}]),unit=(h-21)/(hi-lo+1);
     const y=p=>y0+h-9-(p-lo)*unit+pitchPan;

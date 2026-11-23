@@ -17,6 +17,8 @@ An offline, standalone vocal editor for auditioning automatic pitch correction, 
 
 Import the instrumental and lead from the same timeline start. Check the lead and click **Tune checked tracks**. The chord names above the timeline show what the editor detected. Click a vocal note to hear it and see the supporting chord and suggested pitch. Use **Listen: Original/Edited** to judge it against the instrumental. Drag the pitch to override a suggestion, or click **Keep original pitch**. Both choices protect that note on subsequent chord-guided passes. **Reset note** clears the manual override and the other edits on that note.
 
+The editor looks for sustained changes of pitch within a word and can separate an opening scoop from its landing. The scoop follows the landing’s pitch correction so its shape remains editable. Natural pitches have dark timeline rows and accidentals have lighter rows.
+
 The editor considers the measured vocal pitch, local chord, selected scale and surrounding melodic intervals. A borrowed chord can support a note outside the selected key. A well-centered passing note can stay outside the chord. The pitch pass moves note centers and retains their vibrato and drift settings. When a chord cannot be named, the editor can use the pitch classes audible in the backing during that note. If neither the chord nor its local tones are clear, or the vocal pitch is unreliable, the editor holds that note for review. The pitch pass reports how many notes changed and which backing track it used. Selecting **Key and scale only** returns to the original tuning mode. The guide choice is saved with the project and its chord map is rebuilt from the stored backing audio when reopened.
 
 ## Beta scope
