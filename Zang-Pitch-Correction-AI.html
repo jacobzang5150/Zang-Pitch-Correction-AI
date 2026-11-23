@@ -115,7 +115,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 -->
 </head><body>
-<header><div class="brand"><b class="mark" aria-hidden="true">∿</b><div><h1>Zang <span>Pitch Correction</span></h1><small>STANDALONE BETA · 0.4.2</small></div></div>
+<header><div class="brand"><b class="mark" aria-hidden="true">∿</b><div><h1>Zang <span>Pitch Correction</span></h1><small>STANDALONE BETA · 0.5</small></div></div>
 <nav><details class="projectMenu"><summary>Project</summary><div><button id="newProject">New project</button><button id="openProject">Open project</button><button id="stem">Export active WAV</button></div></details><button id="save">Save project</button><button id="export" class="accent">Export stems ↗</button></nav></header>
 <div class="layout"><aside><div class="section"><h2>Mixer</h2><span id="trackCount">0</span></div>
 <div id="tracks"></div>
@@ -168,6 +168,16 @@ function estimatePitch(signal, start, rate) {
   const lo=curve[best-1], center=curve[best], hi=curve[best+1];
   const correction=clamp(.5*(lo-hi)/(lo+hi-2*center || 1),-.5,.5);
   return [69+12*Math.log2(rate/(best+correction)/440),1-center];
+}
+function vocalChannel(channels){
+  if(channels.length===1)return channels[0];
+  // Pick a recorded channel without cancelling a phase-inverted stereo stem.
+  const energy=channels.map(channel=>{
+    let sum=0;
+    for(let i=0;i<channel.length;i+=17)sum+=channel[i]*channel[i];
+    return sum;
+  });
+  return channels[energy.indexOf(Math.max(...energy))];
 }
 function analyze(samples, rate, detectPitch=true) {
   const stride=Math.max(1,Math.round(rate/8000)), sr=rate/stride, pad=Math.ceil(sr*.023);
@@ -239,7 +249,8 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
   const states=notes.map(n=>{
     const targets=[];
     const chord=guide?harmonyForNote(guide,n):null;
-    if(guide && (n.pitchLocked || !chord || n.confidence<.65)) {
+    const tones=guide&&!chord?backingTonesForNote(guide,n):null;
+    if(n.pitchLocked || (guide && ((!chord&&!tones)||n.confidence<.65))) {
       if(!n.pitchLocked)n.pitchReview={reason:'Review by ear'};
       return [{p:n.p+n.pitch,cost:0,prev:0,hold:true}];
     }
@@ -248,8 +259,8 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
       const inChord=chord?.tones.includes((p+120)%12);
       // Keep a clearly sung extension or passing note eligible, including borrowed tones.
       const distance=Math.abs(p-n.p);
-      if(chord ? distance<=.85 : inScale) {
-        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale?0:.035) : 0;
+      if(guide ? distance<=1.05 : inScale) {
+        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale?0:.035) : tones ? .55*(1-tones[(p+120)%12])+(inScale?0:.035) : 0;
         targets.push({p,cost:0,prev:0,harmonicCost,chord});
       }
     }
@@ -270,7 +281,7 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
     if(!s.hold) {
       const delta=s.p-n.p;
       n.pitch=guide&&Math.abs(delta)<.08?0:delta*strength;
-      if(guide)n.pitchReview={root:s.chord.root,suffix:s.chord.suffix,target:s.p};
+      if(guide)n.pitchReview=s.chord?{root:s.chord.root,suffix:s.chord.suffix,target:s.p}:{source:'backing tones',target:s.p};
       else {delete n.pitchReview;delete n.pitchLocked;}
     }
     j=s.prev;
@@ -409,7 +420,7 @@ function backingHarmony(channels, rate) {
   });
   const duration=channels[0].length/rate,window=Float64Array.from({length:n},(_,i)=>.5-.5*Math.cos(2*Math.PI*i/(n-1)));
   const real=new Float64Array(n),imag=new Float64Array(n),mag=new Float64Array(n/2);
-  const frames=[];
+  const frames=[],salience=[];
   for(let frame=0;frame*CHORD_HOP<duration;frame++) {
     const offset=Math.round((frame+.5)*CHORD_HOP*sr)-n/2,chroma=new Float64Array(12);
     for(const signal of down) {
@@ -427,12 +438,14 @@ function backingHarmony(channels, rate) {
         chroma[(key+120)%12]+=m*closeness/Math.max(1,hz/800);
       }
     }
+    const total=chroma.reduce((sum,value)=>sum+value,0);
+    salience.push(total>.05?Array.from(chroma,value=>value/total):null);
     frames.push(identifyChord(chroma));
   }
   // Drop isolated estimates, including ones straddling an actual chord change.
   const same=(a,b)=>a&&b&&a.root===b.root&&a.suffix===b.suffix;
   const stable=frames.map((c,i)=>same(c,frames[i-1])||same(c,frames[i+1])?c:null);
-  return {frames:stable,duration};
+  return {frames:stable,salience,duration};
 }
 
 function harmonyForNote(guide,n) {
@@ -448,6 +461,23 @@ function harmonyForNote(guide,n) {
   for(const v of votes.values())if(!best||v.weight>best.weight)best=v;
   if(!best||best.coverage<(end-start)*.58||best.weight<(end-start)*.42)return null;
   return {...best.chord,confidence:best.weight/(end-start)};
+}
+
+function backingTonesForNote(guide,n){
+  if(!guide.salience)return null;
+  const start=n.s+n.offset,end=n.e+n.offset+n.length;
+  const weights=new Float64Array(12);
+  let coverage=0;
+  for(let i=Math.max(0,Math.floor(start/CHORD_HOP));i<guide.salience.length&&i*CHORD_HOP<end;i++){
+    const frame=guide.salience[i];if(!frame)continue;
+    const overlap=Math.min(end,(i+1)*CHORD_HOP,guide.duration)-Math.max(start,i*CHORD_HOP);
+    coverage+=overlap;
+    for(let pc=0;pc<12;pc++)weights[pc]+=frame[pc]*overlap;
+  }
+  if(coverage<(end-start)*.45)return null;
+  const peak=Math.max(...weights)/coverage;
+  if(peak<.15)return null;
+  return Array.from(weights,value=>value/(peak*coverage));
 }
 
 function timeMap(notes,duration) {
@@ -510,11 +540,14 @@ function slowContour(frames) {
   });
 }
 
+function connectedNotes(n,next){
+  return !!next&&!n.hard&&next.s-n.e<.06&&next.s+next.offset-(n.e+n.offset+n.length)<.06;
+}
 function pitchAdjustment(n,next,pitch,slowPitch,sec) {
   const fraction=clamp((sec-n.s)/(n.e-n.s),0,1);
   const edge=n.hard?1:clamp(Math.min(sec-n.s,n.e-sec)/.012,0,1);
   let shift=edge*(n.pitch+(n.drift-1)*(slowPitch-n.p)+(n.mod-1)*(pitch-slowPitch));
-  if(n.transition && !n.hard && next && next.s-n.e<.06)
+  if(n.transition && connectedNotes(n,next))
     shift+=n.transition*(next.p+next.pitch-n.p-n.pitch)*clamp((fraction-.72)/.28,0,1);
   return shift;
 }
@@ -522,7 +555,7 @@ function pitchAdjustment(n,next,pitch,slowPitch,sec) {
 function renderTrack(channels,rate,frames,notes) {
   if(!notes.some(edited))return channels;
   const duration=channels[0].length/rate, map=timeMap(notes,duration);
-  const mono=channels[0], marks=pitchMarks(mono,rate,frames), size=mono.length;
+  const mono=vocalChannel(channels), marks=pitchMarks(mono,rate,frames), size=mono.length;
   const out=channels.map(()=>new Float32Array(size)), weight=new Float32Array(size);
   const gains=new Float32Array(size), dry=new Float32Array(size);
   const params=notes.map((n,i)=>{
@@ -609,6 +642,16 @@ function estimatePitch(signal, start, rate) {
   const correction=clamp(.5*(lo-hi)/(lo+hi-2*center || 1),-.5,.5);
   return [69+12*Math.log2(rate/(best+correction)/440),1-center];
 }
+function vocalChannel(channels){
+  if(channels.length===1)return channels[0];
+  // Pick a recorded channel without cancelling a phase-inverted stereo stem.
+  const energy=channels.map(channel=>{
+    let sum=0;
+    for(let i=0;i<channel.length;i+=17)sum+=channel[i]*channel[i];
+    return sum;
+  });
+  return channels[energy.indexOf(Math.max(...energy))];
+}
 function analyze(samples, rate, detectPitch=true) {
   const stride=Math.max(1,Math.round(rate/8000)), sr=rate/stride, pad=Math.ceil(sr*.023);
   const low=new Float32Array(Math.ceil(samples.length/stride)+2*pad+8);
@@ -679,7 +722,8 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
   const states=notes.map(n=>{
     const targets=[];
     const chord=guide?harmonyForNote(guide,n):null;
-    if(guide && (n.pitchLocked || !chord || n.confidence<.65)) {
+    const tones=guide&&!chord?backingTonesForNote(guide,n):null;
+    if(n.pitchLocked || (guide && ((!chord&&!tones)||n.confidence<.65))) {
       if(!n.pitchLocked)n.pitchReview={reason:'Review by ear'};
       return [{p:n.p+n.pitch,cost:0,prev:0,hold:true}];
     }
@@ -688,8 +732,8 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
       const inChord=chord?.tones.includes((p+120)%12);
       // Keep a clearly sung extension or passing note eligible, including borrowed tones.
       const distance=Math.abs(p-n.p);
-      if(chord ? distance<=.85 : inScale) {
-        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale?0:.035) : 0;
+      if(guide ? distance<=1.05 : inScale) {
+        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale?0:.035) : tones ? .55*(1-tones[(p+120)%12])+(inScale?0:.035) : 0;
         targets.push({p,cost:0,prev:0,harmonicCost,chord});
       }
     }
@@ -710,7 +754,7 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
     if(!s.hold) {
       const delta=s.p-n.p;
       n.pitch=guide&&Math.abs(delta)<.08?0:delta*strength;
-      if(guide)n.pitchReview={root:s.chord.root,suffix:s.chord.suffix,target:s.p};
+      if(guide)n.pitchReview=s.chord?{root:s.chord.root,suffix:s.chord.suffix,target:s.p}:{source:'backing tones',target:s.p};
       else {delete n.pitchReview;delete n.pitchLocked;}
     }
     j=s.prev;
@@ -849,7 +893,7 @@ function backingHarmony(channels, rate) {
   });
   const duration=channels[0].length/rate,window=Float64Array.from({length:n},(_,i)=>.5-.5*Math.cos(2*Math.PI*i/(n-1)));
   const real=new Float64Array(n),imag=new Float64Array(n),mag=new Float64Array(n/2);
-  const frames=[];
+  const frames=[],salience=[];
   for(let frame=0;frame*CHORD_HOP<duration;frame++) {
     const offset=Math.round((frame+.5)*CHORD_HOP*sr)-n/2,chroma=new Float64Array(12);
     for(const signal of down) {
@@ -867,12 +911,14 @@ function backingHarmony(channels, rate) {
         chroma[(key+120)%12]+=m*closeness/Math.max(1,hz/800);
       }
     }
+    const total=chroma.reduce((sum,value)=>sum+value,0);
+    salience.push(total>.05?Array.from(chroma,value=>value/total):null);
     frames.push(identifyChord(chroma));
   }
   // Drop isolated estimates, including ones straddling an actual chord change.
   const same=(a,b)=>a&&b&&a.root===b.root&&a.suffix===b.suffix;
   const stable=frames.map((c,i)=>same(c,frames[i-1])||same(c,frames[i+1])?c:null);
-  return {frames:stable,duration};
+  return {frames:stable,salience,duration};
 }
 
 function harmonyForNote(guide,n) {
@@ -888,6 +934,23 @@ function harmonyForNote(guide,n) {
   for(const v of votes.values())if(!best||v.weight>best.weight)best=v;
   if(!best||best.coverage<(end-start)*.58||best.weight<(end-start)*.42)return null;
   return {...best.chord,confidence:best.weight/(end-start)};
+}
+
+function backingTonesForNote(guide,n){
+  if(!guide.salience)return null;
+  const start=n.s+n.offset,end=n.e+n.offset+n.length;
+  const weights=new Float64Array(12);
+  let coverage=0;
+  for(let i=Math.max(0,Math.floor(start/CHORD_HOP));i<guide.salience.length&&i*CHORD_HOP<end;i++){
+    const frame=guide.salience[i];if(!frame)continue;
+    const overlap=Math.min(end,(i+1)*CHORD_HOP,guide.duration)-Math.max(start,i*CHORD_HOP);
+    coverage+=overlap;
+    for(let pc=0;pc<12;pc++)weights[pc]+=frame[pc]*overlap;
+  }
+  if(coverage<(end-start)*.45)return null;
+  const peak=Math.max(...weights)/coverage;
+  if(peak<.15)return null;
+  return Array.from(weights,value=>value/(peak*coverage));
 }
 
 function timeMap(notes,duration) {
@@ -950,11 +1013,14 @@ function slowContour(frames) {
   });
 }
 
+function connectedNotes(n,next){
+  return !!next&&!n.hard&&next.s-n.e<.06&&next.s+next.offset-(n.e+n.offset+n.length)<.06;
+}
 function pitchAdjustment(n,next,pitch,slowPitch,sec) {
   const fraction=clamp((sec-n.s)/(n.e-n.s),0,1);
   const edge=n.hard?1:clamp(Math.min(sec-n.s,n.e-sec)/.012,0,1);
   let shift=edge*(n.pitch+(n.drift-1)*(slowPitch-n.p)+(n.mod-1)*(pitch-slowPitch));
-  if(n.transition && !n.hard && next && next.s-n.e<.06)
+  if(n.transition && connectedNotes(n,next))
     shift+=n.transition*(next.p+next.pitch-n.p-n.pitch)*clamp((fraction-.72)/.28,0,1);
   return shift;
 }
@@ -962,7 +1028,7 @@ function pitchAdjustment(n,next,pitch,slowPitch,sec) {
 function renderTrack(channels,rate,frames,notes) {
   if(!notes.some(edited))return channels;
   const duration=channels[0].length/rate, map=timeMap(notes,duration);
-  const mono=channels[0], marks=pitchMarks(mono,rate,frames), size=mono.length;
+  const mono=vocalChannel(channels), marks=pitchMarks(mono,rate,frames), size=mono.length;
   const out=channels.map(()=>new Float32Array(size)), weight=new Float32Array(size);
   const gains=new Float32Array(size), dry=new Float32Array(size);
   const params=notes.map((n,i)=>{
@@ -1176,8 +1242,8 @@ async function prepare(raw,idx) {
   t.pan=Number.isFinite(t.pan)?clamp(t.pan,-1,1):0;
   status('Analyzing '+t.name+'…');
   t.pitchAnalyzed=t.role==='vocal'||Boolean(raw.notes?.length);
-  const x=await dsp('analyze',t.channels[0],t.rate,t.pitchAnalyzed);
-  t.frames=x.frames;t.slow=slowContour(t.frames);t.notes=raw.notes??x.notes;t.color=colors[idx%colors.length];
+  const x=await dsp('analyze',vocalChannel(t.channels),t.rate,t.pitchAnalyzed);
+  t.frames=x.frames;t.slow=slowContour(t.frames);t.notes=raw.notes?.length?raw.notes:x.notes;t.color=colors[idx%colors.length];
   return t;
 }
 async function addFiles(rawTracks,replace=false) {
@@ -1185,7 +1251,11 @@ async function addFiles(rawTracks,replace=false) {
   const list=[];
   for(const raw of rawTracks)list.push(await prepare(raw,(replace?0:tracks.length)+list.length));
   if(replace){resetViewport();tracks.length=0;position=0;active=0;}
-  tracks.push(...list);selected=-1;dirty=true;undoStack.length=0;redoStack.length=0;
+  tracks.push(...list);
+  if(current()?.role==='reference'){
+    const vocal=list.find(t=>t.role==='vocal');if(vocal){active=tracks.indexOf(vocal);if(tracks.filter(t=>t.role==='vocal').length===list.filter(t=>t.role==='vocal').length)$('guide').dataset.pending=String(active);}
+  }
+  selected=-1;dirty=true;undoStack.length=0;redoStack.length=0;
   if(tracks.length===list.length){title(list[0].name.replace(/\.(wav|wave)$/i,'')+' · Vocals');$('guide').dataset.pending='0';}
   status('Ready · '+list.length+' track'+(list.length===1?'':'s')+' loaded.');
 }
@@ -1250,7 +1320,7 @@ async function useChordGuide(index) {
     t.harmony=await dsp('harmony',t.channels,t.rate);
   }
   chordSource=index;
-  status(t.harmony.frames.some(Boolean)?'Chord guide ready · '+t.name:'No clear chords detected. Vocal notes will be left for review.');
+  status(t.harmony.frames.some(Boolean)?'Chord guide ready · '+t.name:'Backing track ready · using local backing tones where available.');
 }
 function chordGuide(){return tracks[chordSource]?.harmony||null;}
 $('chordGuide').onchange=e=>run(async()=>{stop();await useChordGuide(+e.target.value);dirty=true;});
@@ -1297,7 +1367,24 @@ $('export').onclick=()=>run(async()=>{
   download(zipStems(files),safeName(projectTitle)+' - stems.zip');status('Exported '+files.length+' time-aligned, 24-bit WAV stems.');
 });
 $('stem').onclick=()=>run(async()=>{const t=current();if(t){download(new Blob([wavBytes(await rendered(t),t.rate)],{type:'audio/wav'}),safeName(t.name)+' - edited.wav');status('Active stem exported.');}});
-$('tune').onclick=()=>run(()=>{const a=targets();remember();for(const t of a){tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100,chordGuide());invalidate(t);}status('Pitch pass applied to '+a.length+' track(s).');});
+function tuneTracks(a){
+  const guide=chordGuide();
+  let changed=0,held=0,count=0;
+  for(const t of a){
+    const before=t.notes.map(n=>n.pitch);
+    tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100,guide);
+    t.notes.forEach((n,i)=>{
+      count++;if(n.pitchLocked||n.pitchReview?.reason)held++;
+      if(Math.abs(n.pitch-before[i])>.0001)changed++;
+    });
+    invalidate(t);
+  }
+  if(a.some(t=>t.notes.some(n=>Math.abs(n.pitch)>.0001))){original=false;$('ab').textContent='Listen: Edited';$('ab').setAttribute('aria-pressed','false');}
+  if(!count)return 'No pitched notes detected in the checked vocals.';
+  const reference=guide?tracks[chordSource].name:'key and scale';
+  return changed+' of '+count+' notes changed against '+reference+' · '+held+' held for review or manually locked.';
+}
+$('tune').onclick=()=>run(()=>{const a=targets();remember();status(tuneTracks(a));});
 $('quant').onclick=()=>run(()=>{const a=targets(),bpm=+$('bpm').value;if(bpm<20||bpm>400)throw Error('Set a tempo between 20 and 400 BPM.');remember();for(const t of a){quantize(t.notes,t.channels[0].length/t.rate,bpm,+$('grid').value,+$('timing').value/100);invalidate(t);}status('Timing pass applied.');});
 $('firstpass').onclick=()=>run(()=>{
   const a=targets(),bpm=+$('bpm').value;
@@ -1305,10 +1392,8 @@ $('firstpass').onclick=()=>run(()=>{
   remember();
   for(const t of a){
     quantize(t.notes,t.channels[0].length/t.rate,bpm,+$('grid').value,+$('timing').value/100);
-    tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100,chordGuide());
-    invalidate(t);
   }
-  status('Pitch and timing pass applied. Click a note to refine it.');
+  status('Timing applied. '+tuneTracks(a));
 });
 $('align').onclick=()=>run(async()=>{
   const guide=tracks[+$('guide').value],a=targets().filter(t=>t!==guide);
@@ -1439,7 +1524,7 @@ function closePalette(restoreFocus=false) {
 }
 function chooseTool(id,label){
   cvs.style.cursor=id==='scroll'?'grab':'';
-  activeTool=id;$('toolButton').textContent=label+' ▾';
+  activeTool=id;draw();$('toolButton').textContent=label+' ▾';
   closePalette(true);
 }
 const toolPaths={
@@ -1556,7 +1641,7 @@ const controls=[
   ['sibilant','Sibilants (dB)',-24,12,.1],['fadeIn','Fade in (ms)',0,500,1,1000],['fadeOut','Fade out (ms)',0,500,1,1000]
 ];
 const cvs=$('canvas'),ctx=cvs.getContext('2d');
-let hits=[],timelineScale={},gesture=null,viewGesture=null,pitchZoom=1;
+let connections=[],hits=[],timelineScale={},gesture=null,viewGesture=null,pitchZoom=1;
 let timeOverhang=0,pitchPan=0;
 function resetViewport(){
   timeOverhang=pitchPan=0;pitchZoom=1;$('zoom').value=1;$('pan').value=0;$('timeline').scrollTop=0;
@@ -1645,6 +1730,7 @@ function trackList(){
         undoStack.length=redoStack.length=0;
       }
       t.role=role.value;
+      if(t.role==='reference'&&chordSource<0)await useChordGuide(i);
       if(i===chordSource&&t.role!=='reference')chordSource=-1;
       selected=-1;invalidate(t);
     });extra.append(role);
@@ -1662,6 +1748,7 @@ function noteInfo(){
   const review=n.pitchReview;
   let message=noteName(n.p+n.pitch)+' · '+Math.round((n.e-n.s+n.length)*1000)+' ms';
   if(n.pitchLocked)message+=' · Manual pitch';
+  else if(review?.source)message+=' · Backing tones → '+noteName(review.target);
   else if(review)message+=' · '+(review.reason||'Chord '+names[review.root]+review.suffix+' → '+noteName(review.target));
   status(message);
 }
@@ -1683,7 +1770,7 @@ function draw(){
   ctx.setTransform(px,0,0,px,0,0);ctx.fillStyle='#141419';ctx.fillRect(0,0,width,height);
   const span=total/+$('zoom').value,origin=(total-span)*+$('pan').value/1000+timeOverhang,scale=(width-left)/span;
   const x=s=>left+(s-origin)*scale;
-  timelineScale={left,origin,scale,width,top};hits=[];
+  timelineScale={left,origin,scale,width,top};hits=[];connections=[];
   const step=[.025,.05,.1,.25,.5,1,2,5,10,20,30,60,120,300,600].find(s=>s*scale>62)||1200;
   ctx.font='10px monospace';ctx.lineWidth=1;
   for(let t=Math.max(0,Math.ceil(origin/step)*step);t<=origin+span+.0001;t+=step){
@@ -1741,7 +1828,20 @@ function draw(){
           const u=(k*HOP-n.s)/(n.e-n.s),xx=x(start+u*(end-start)), yy=y(f.p+pitchAdjustment(n,t.notes[ni+1],f.p,t.slow[k],k*HOP));
           if(first){ctx.moveTo(xx,yy);first=false;}else ctx.lineTo(xx,yy);
         }
-        ctx.stroke();if(cy>=y0&&cy<=y0+h)hits.push({i,ni,x:cx,y:cy,w,bh,unit});
+        ctx.stroke();
+        const next=t.notes[ni+1];
+        if((activeTool==='pitch'||activeTool==='main')&&i===active&&connectedNotes(n,next)){
+          const nextY=y(next.p+next.pitch),endX=x(end),nextX=x(next.s+next.offset);
+          const handleX=endX,handleY=cy+(nextY-cy)*n.transition;
+          ctx.beginPath();ctx.strokeStyle='#ffacb6';
+          ctx.moveTo(x(start+.72*(end-start)),cy);ctx.lineTo(handleX,handleY);
+          ctx.lineTo(nextX+Math.min(5,(next.e-next.s)*scale*.15),nextY);ctx.stroke();
+          if(handleY>=y0&&handleY<=y0+h&&handleX>=left&&handleX<=width){
+            ctx.beginPath();ctx.arc(handleX,handleY,3.2,0,2*Math.PI);ctx.fillStyle='#ffacb6';ctx.fill();
+            connections.push({i,ni,x:handleX,y:handleY,rise:cy-nextY});
+          }
+        }
+        if(cy>=y0&&cy<=y0+h)hits.push({i,ni,x:cx,y:cy,w,bh,unit});
       });
     }
     ctx.restore();
@@ -1753,6 +1853,9 @@ function draw(){
   }
 }
 function point(e){const r=cvs.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top];}
+function connectionAt(x,y){
+  return connections.find(c=>Math.hypot(x-c.x,y-c.y)<=5);
+}
 function hitAt(x,y){
   const candidates=hits.filter(h=>x>=h.x-2&&x<=h.x+h.w+2&&Math.abs(y-h.y)<Math.max(7,h.bh/2+2));
   return candidates.sort((a,b)=>Number(b.i===active)-Number(a.i===active)||Math.abs(a.y-y)-Math.abs(b.y-y))[0];
@@ -1800,13 +1903,13 @@ cvs.onpointerdown=e=>{
   if(zoomChord||activeTool==='zoom'||activeTool==='scroll'){startView(e,x,y,zoomChord?'zoom':activeTool);return;}
   if(x<left)return;
   stop();const clickedTime=clamp(origin+(x-left)/scale,0,duration());
-  const hit=hitAt(x,y);if(!hit||y<timelineScale.top){position=clickedTime;draw();return;}
+  const connection=connectionAt(x,y),hit=connection||hitAt(x,y);if(!hit||y<timelineScale.top){position=clickedTime;draw();return;}
   active=hit.i;selected=hit.ni;refresh();noteInfo();
   if(activeTool==='split'){splitNote(clickedTime);return;}if(activeTool==='merge'){mergeNext();return;}
   if(activeTool==='hard'){remember();note().hard=!note().hard;invalidate(current());status(note().hard?'Hard boundary':'Soft boundary');return;}
-  let id=activeTool;
+  let id=connection?'transition':activeTool;
   if(id==='main'&&x>=hit.x+hit.w-Math.min(6,hit.w*.15))id='length';
-  if(id==='pitch'&&note()!==current().notes.at(-1)&&x>hit.x+hit.w-Math.min(5,hit.w*.12))id='transition';
+  if(id==='pitch'&&connectedNotes(note(),current().notes[selected+1])&&x>hit.x+hit.w-Math.min(5,hit.w*.12))id='transition';
   gesture={x,y,hit,id,start:note()[id],changed:false};cvs.setPointerCapture(e.pointerId);monitorNote(current(),note());
 };
 cvs.onpointermove=e=>{
@@ -1823,7 +1926,10 @@ cvs.onpointermove=e=>{
     }
     return;
   }
-  if(!gesture)return;
+  if(!gesture){
+    if(activeTool==='pitch'||activeTool==='main')cvs.style.cursor=connectionAt(...point(e))?'ns-resize':'';
+    return;
+  }
   const [x,y]=point(e),g=gesture,dx=x-g.x,dy=g.y-y;
   if(!g.changed&&Math.abs(dx)+Math.abs(dy)<3)return;
   if(!g.changed){
@@ -1835,9 +1941,12 @@ cvs.onpointermove=e=>{
   if(g.id==='pitch'||g.id==='formant')delta=dy/g.hit.unit;
   else if(['offset','length','fadeIn','fadeOut'].includes(g.id))delta=dx/timelineScale.scale;
   else if(['gain','sibilant'].includes(g.id))delta=dy*.15;
+  else if(g.id==='transition')delta=dy/(Math.abs(g.hit.rise)>6?g.hit.rise:48);
   else delta=dy*.007;
   const value=clamp(g.start+delta,min/factor,max/factor);
-  adjust(g.id,value);updateMonitor();noteInfo();draw();
+  adjust(g.id,value);updateMonitor();
+  if(g.id==='transition')status('Pitch connection · '+Math.round(value*100)+'%');else noteInfo();
+  draw();
 };
 cvs.onpointerup=e=>{
   if(e.button!==0)return;

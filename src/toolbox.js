@@ -16,7 +16,7 @@ function closePalette(restoreFocus=false) {
 }
 function chooseTool(id,label){
   cvs.style.cursor=id==='scroll'?'grab':'';
-  activeTool=id;$('toolButton').textContent=label+' ▾';
+  activeTool=id;draw();$('toolButton').textContent=label+' ▾';
   closePalette(true);
 }
 const toolPaths={

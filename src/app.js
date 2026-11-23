@@ -57,8 +57,8 @@ async function prepare(raw,idx) {
   t.pan=Number.isFinite(t.pan)?clamp(t.pan,-1,1):0;
   status('Analyzing '+t.name+'…');
   t.pitchAnalyzed=t.role==='vocal'||Boolean(raw.notes?.length);
-  const x=await dsp('analyze',t.channels[0],t.rate,t.pitchAnalyzed);
-  t.frames=x.frames;t.slow=slowContour(t.frames);t.notes=raw.notes??x.notes;t.color=colors[idx%colors.length];
+  const x=await dsp('analyze',vocalChannel(t.channels),t.rate,t.pitchAnalyzed);
+  t.frames=x.frames;t.slow=slowContour(t.frames);t.notes=raw.notes?.length?raw.notes:x.notes;t.color=colors[idx%colors.length];
   return t;
 }
 async function addFiles(rawTracks,replace=false) {
@@ -66,7 +66,11 @@ async function addFiles(rawTracks,replace=false) {
   const list=[];
   for(const raw of rawTracks)list.push(await prepare(raw,(replace?0:tracks.length)+list.length));
   if(replace){resetViewport();tracks.length=0;position=0;active=0;}
-  tracks.push(...list);selected=-1;dirty=true;undoStack.length=0;redoStack.length=0;
+  tracks.push(...list);
+  if(current()?.role==='reference'){
+    const vocal=list.find(t=>t.role==='vocal');if(vocal){active=tracks.indexOf(vocal);if(tracks.filter(t=>t.role==='vocal').length===list.filter(t=>t.role==='vocal').length)$('guide').dataset.pending=String(active);}
+  }
+  selected=-1;dirty=true;undoStack.length=0;redoStack.length=0;
   if(tracks.length===list.length){title(list[0].name.replace(/\.(wav|wave)$/i,'')+' · Vocals');$('guide').dataset.pending='0';}
   status('Ready · '+list.length+' track'+(list.length===1?'':'s')+' loaded.');
 }
@@ -131,7 +135,7 @@ async function useChordGuide(index) {
     t.harmony=await dsp('harmony',t.channels,t.rate);
   }
   chordSource=index;
-  status(t.harmony.frames.some(Boolean)?'Chord guide ready · '+t.name:'No clear chords detected. Vocal notes will be left for review.');
+  status(t.harmony.frames.some(Boolean)?'Chord guide ready · '+t.name:'Backing track ready · using local backing tones where available.');
 }
 function chordGuide(){return tracks[chordSource]?.harmony||null;}
 $('chordGuide').onchange=e=>run(async()=>{stop();await useChordGuide(+e.target.value);dirty=true;});
@@ -178,7 +182,24 @@ $('export').onclick=()=>run(async()=>{
   download(zipStems(files),safeName(projectTitle)+' - stems.zip');status('Exported '+files.length+' time-aligned, 24-bit WAV stems.');
 });
 $('stem').onclick=()=>run(async()=>{const t=current();if(t){download(new Blob([wavBytes(await rendered(t),t.rate)],{type:'audio/wav'}),safeName(t.name)+' - edited.wav');status('Active stem exported.');}});
-$('tune').onclick=()=>run(()=>{const a=targets();remember();for(const t of a){tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100,chordGuide());invalidate(t);}status('Pitch pass applied to '+a.length+' track(s).');});
+function tuneTracks(a){
+  const guide=chordGuide();
+  let changed=0,held=0,count=0;
+  for(const t of a){
+    const before=t.notes.map(n=>n.pitch);
+    tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100,guide);
+    t.notes.forEach((n,i)=>{
+      count++;if(n.pitchLocked||n.pitchReview?.reason)held++;
+      if(Math.abs(n.pitch-before[i])>.0001)changed++;
+    });
+    invalidate(t);
+  }
+  if(a.some(t=>t.notes.some(n=>Math.abs(n.pitch)>.0001))){original=false;$('ab').textContent='Listen: Edited';$('ab').setAttribute('aria-pressed','false');}
+  if(!count)return 'No pitched notes detected in the checked vocals.';
+  const reference=guide?tracks[chordSource].name:'key and scale';
+  return changed+' of '+count+' notes changed against '+reference+' · '+held+' held for review or manually locked.';
+}
+$('tune').onclick=()=>run(()=>{const a=targets();remember();status(tuneTracks(a));});
 $('quant').onclick=()=>run(()=>{const a=targets(),bpm=+$('bpm').value;if(bpm<20||bpm>400)throw Error('Set a tempo between 20 and 400 BPM.');remember();for(const t of a){quantize(t.notes,t.channels[0].length/t.rate,bpm,+$('grid').value,+$('timing').value/100);invalidate(t);}status('Timing pass applied.');});
 $('firstpass').onclick=()=>run(()=>{
   const a=targets(),bpm=+$('bpm').value;
@@ -186,10 +207,8 @@ $('firstpass').onclick=()=>run(()=>{
   remember();
   for(const t of a){
     quantize(t.notes,t.channels[0].length/t.rate,bpm,+$('grid').value,+$('timing').value/100);
-    tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100,chordGuide());
-    invalidate(t);
   }
-  status('Pitch and timing pass applied. Click a note to refine it.');
+  status('Timing applied. '+tuneTracks(a));
 });
 $('align').onclick=()=>run(async()=>{
   const guide=tracks[+$('guide').value],a=targets().filter(t=>t!==guide);

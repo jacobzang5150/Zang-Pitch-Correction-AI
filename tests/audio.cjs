@@ -57,6 +57,25 @@ vm.runInNewContext(engine+`(async()=>{
   const minor=Float32Array.from({length:rate},(_,i)=>[50,53,57].reduce((v,p)=>v+.1*Math.sin(2*Math.PI*midiHz(p)*i/rate),0));
   const minorChord=backingHarmony([minor],rate).frames[3];assert.equal(minorChord.root,2);assert.equal(minorChord.suffix,'m');
   const single=make(60);assert.ok(backingHarmony([single],rate).frames.every(c=>c===null));
+  // With no identifiable triad, a two-note accompaniment still resolves a detuned vocal.
+  const interval=Float32Array.from({length:rate*2},(_,i)=>{
+    const tones=i<rate?[48,55]:[49,56];
+    return tones.reduce((sum,p)=>sum+.22*Math.sin(2*Math.PI*midiHz(p)*i/rate),0);
+  });
+  const intervalGuide=backingHarmony([interval],rate);
+  assert.ok(intervalGuide.frames.every(c=>c===null));
+  const rightOnly=[new Float32Array(ambiguous.length),ambiguous];
+  const intervalLead=analyze(vocalChannel(rightOnly),rate);
+  tuneNotes(intervalLead.notes,0,'chromatic',1,intervalGuide);
+  assert.deepEqual(intervalLead.notes.map(n=>n.pitchReview.target),[60,61]);
+  const corrected=analyze(renderTrack(rightOnly,rate,intervalLead.frames,intervalLead.notes)[1],rate);
+  assert.ok(Math.abs(corrected.notes[0].p-60)<.1 && Math.abs(corrected.notes[1].p-61)<.1);
+  const phrase=Float32Array.from({length:rate},(_,i)=>.4*Math.sin(2*Math.PI*midiHz(i<rate/2?60:64)*i/rate));
+  const legato=[defaultNote(0,.5,60,1),defaultNote(.5,1,64,1)];
+  legato[0].transition=1;
+  const curve=analyze(renderTrack([phrase],rate,analyze(phrase,rate).frames,legato)[0],rate).frames;
+  assert.ok(curve[46].p>62 && curve[46].p<64 && Math.abs(curve[20].p-60)<.1,'Audible glide near boundary');
+  legato[0].hard=true;assert.equal(pitchAdjustment(...legato,60,60,.48),0);
   const locked=lead.notes[0];locked.pitchLocked=true;locked.pitch=.19;
   tuneNotes(lead.notes,0,'major',1,harmony);assert.equal(locked.pitch,.19);
   const pastEnd=defaultNote(2.2,2.8,60.48,.95);

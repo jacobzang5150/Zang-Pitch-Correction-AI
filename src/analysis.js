@@ -33,6 +33,16 @@ function estimatePitch(signal, start, rate) {
   const correction=clamp(.5*(lo-hi)/(lo+hi-2*center || 1),-.5,.5);
   return [69+12*Math.log2(rate/(best+correction)/440),1-center];
 }
+function vocalChannel(channels){
+  if(channels.length===1)return channels[0];
+  // Pick a recorded channel without cancelling a phase-inverted stereo stem.
+  const energy=channels.map(channel=>{
+    let sum=0;
+    for(let i=0;i<channel.length;i+=17)sum+=channel[i]*channel[i];
+    return sum;
+  });
+  return channels[energy.indexOf(Math.max(...energy))];
+}
 function analyze(samples, rate, detectPitch=true) {
   const stride=Math.max(1,Math.round(rate/8000)), sr=rate/stride, pad=Math.ceil(sr*.023);
   const low=new Float32Array(Math.ceil(samples.length/stride)+2*pad+8);
@@ -103,7 +113,8 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
   const states=notes.map(n=>{
     const targets=[];
     const chord=guide?harmonyForNote(guide,n):null;
-    if(guide && (n.pitchLocked || !chord || n.confidence<.65)) {
+    const tones=guide&&!chord?backingTonesForNote(guide,n):null;
+    if(n.pitchLocked || (guide && ((!chord&&!tones)||n.confidence<.65))) {
       if(!n.pitchLocked)n.pitchReview={reason:'Review by ear'};
       return [{p:n.p+n.pitch,cost:0,prev:0,hold:true}];
     }
@@ -112,8 +123,8 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
       const inChord=chord?.tones.includes((p+120)%12);
       // Keep a clearly sung extension or passing note eligible, including borrowed tones.
       const distance=Math.abs(p-n.p);
-      if(chord ? distance<=.85 : inScale) {
-        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale?0:.035) : 0;
+      if(guide ? distance<=1.05 : inScale) {
+        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale?0:.035) : tones ? .55*(1-tones[(p+120)%12])+(inScale?0:.035) : 0;
         targets.push({p,cost:0,prev:0,harmonicCost,chord});
       }
     }
@@ -134,7 +145,7 @@ function tuneNotes(notes,root,mode,strength,guide=null) {
     if(!s.hold) {
       const delta=s.p-n.p;
       n.pitch=guide&&Math.abs(delta)<.08?0:delta*strength;
-      if(guide)n.pitchReview={root:s.chord.root,suffix:s.chord.suffix,target:s.p};
+      if(guide)n.pitchReview=s.chord?{root:s.chord.root,suffix:s.chord.suffix,target:s.p}:{source:'backing tones',target:s.p};
       else {delete n.pitchReview;delete n.pitchLocked;}
     }
     j=s.prev;

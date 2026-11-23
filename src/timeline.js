@@ -7,7 +7,7 @@ const controls=[
   ['sibilant','Sibilants (dB)',-24,12,.1],['fadeIn','Fade in (ms)',0,500,1,1000],['fadeOut','Fade out (ms)',0,500,1,1000]
 ];
 const cvs=$('canvas'),ctx=cvs.getContext('2d');
-let hits=[],timelineScale={},gesture=null,viewGesture=null,pitchZoom=1;
+let connections=[],hits=[],timelineScale={},gesture=null,viewGesture=null,pitchZoom=1;
 let timeOverhang=0,pitchPan=0;
 function resetViewport(){
   timeOverhang=pitchPan=0;pitchZoom=1;$('zoom').value=1;$('pan').value=0;$('timeline').scrollTop=0;
@@ -96,6 +96,7 @@ function trackList(){
         undoStack.length=redoStack.length=0;
       }
       t.role=role.value;
+      if(t.role==='reference'&&chordSource<0)await useChordGuide(i);
       if(i===chordSource&&t.role!=='reference')chordSource=-1;
       selected=-1;invalidate(t);
     });extra.append(role);
@@ -113,6 +114,7 @@ function noteInfo(){
   const review=n.pitchReview;
   let message=noteName(n.p+n.pitch)+' · '+Math.round((n.e-n.s+n.length)*1000)+' ms';
   if(n.pitchLocked)message+=' · Manual pitch';
+  else if(review?.source)message+=' · Backing tones → '+noteName(review.target);
   else if(review)message+=' · '+(review.reason||'Chord '+names[review.root]+review.suffix+' → '+noteName(review.target));
   status(message);
 }
@@ -134,7 +136,7 @@ function draw(){
   ctx.setTransform(px,0,0,px,0,0);ctx.fillStyle='#141419';ctx.fillRect(0,0,width,height);
   const span=total/+$('zoom').value,origin=(total-span)*+$('pan').value/1000+timeOverhang,scale=(width-left)/span;
   const x=s=>left+(s-origin)*scale;
-  timelineScale={left,origin,scale,width,top};hits=[];
+  timelineScale={left,origin,scale,width,top};hits=[];connections=[];
   const step=[.025,.05,.1,.25,.5,1,2,5,10,20,30,60,120,300,600].find(s=>s*scale>62)||1200;
   ctx.font='10px monospace';ctx.lineWidth=1;
   for(let t=Math.max(0,Math.ceil(origin/step)*step);t<=origin+span+.0001;t+=step){
@@ -192,7 +194,20 @@ function draw(){
           const u=(k*HOP-n.s)/(n.e-n.s),xx=x(start+u*(end-start)), yy=y(f.p+pitchAdjustment(n,t.notes[ni+1],f.p,t.slow[k],k*HOP));
           if(first){ctx.moveTo(xx,yy);first=false;}else ctx.lineTo(xx,yy);
         }
-        ctx.stroke();if(cy>=y0&&cy<=y0+h)hits.push({i,ni,x:cx,y:cy,w,bh,unit});
+        ctx.stroke();
+        const next=t.notes[ni+1];
+        if((activeTool==='pitch'||activeTool==='main')&&i===active&&connectedNotes(n,next)){
+          const nextY=y(next.p+next.pitch),endX=x(end),nextX=x(next.s+next.offset);
+          const handleX=endX,handleY=cy+(nextY-cy)*n.transition;
+          ctx.beginPath();ctx.strokeStyle='#ffacb6';
+          ctx.moveTo(x(start+.72*(end-start)),cy);ctx.lineTo(handleX,handleY);
+          ctx.lineTo(nextX+Math.min(5,(next.e-next.s)*scale*.15),nextY);ctx.stroke();
+          if(handleY>=y0&&handleY<=y0+h&&handleX>=left&&handleX<=width){
+            ctx.beginPath();ctx.arc(handleX,handleY,3.2,0,2*Math.PI);ctx.fillStyle='#ffacb6';ctx.fill();
+            connections.push({i,ni,x:handleX,y:handleY,rise:cy-nextY});
+          }
+        }
+        if(cy>=y0&&cy<=y0+h)hits.push({i,ni,x:cx,y:cy,w,bh,unit});
       });
     }
     ctx.restore();
@@ -204,6 +219,9 @@ function draw(){
   }
 }
 function point(e){const r=cvs.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top];}
+function connectionAt(x,y){
+  return connections.find(c=>Math.hypot(x-c.x,y-c.y)<=5);
+}
 function hitAt(x,y){
   const candidates=hits.filter(h=>x>=h.x-2&&x<=h.x+h.w+2&&Math.abs(y-h.y)<Math.max(7,h.bh/2+2));
   return candidates.sort((a,b)=>Number(b.i===active)-Number(a.i===active)||Math.abs(a.y-y)-Math.abs(b.y-y))[0];
@@ -251,13 +269,13 @@ cvs.onpointerdown=e=>{
   if(zoomChord||activeTool==='zoom'||activeTool==='scroll'){startView(e,x,y,zoomChord?'zoom':activeTool);return;}
   if(x<left)return;
   stop();const clickedTime=clamp(origin+(x-left)/scale,0,duration());
-  const hit=hitAt(x,y);if(!hit||y<timelineScale.top){position=clickedTime;draw();return;}
+  const connection=connectionAt(x,y),hit=connection||hitAt(x,y);if(!hit||y<timelineScale.top){position=clickedTime;draw();return;}
   active=hit.i;selected=hit.ni;refresh();noteInfo();
   if(activeTool==='split'){splitNote(clickedTime);return;}if(activeTool==='merge'){mergeNext();return;}
   if(activeTool==='hard'){remember();note().hard=!note().hard;invalidate(current());status(note().hard?'Hard boundary':'Soft boundary');return;}
-  let id=activeTool;
+  let id=connection?'transition':activeTool;
   if(id==='main'&&x>=hit.x+hit.w-Math.min(6,hit.w*.15))id='length';
-  if(id==='pitch'&&note()!==current().notes.at(-1)&&x>hit.x+hit.w-Math.min(5,hit.w*.12))id='transition';
+  if(id==='pitch'&&connectedNotes(note(),current().notes[selected+1])&&x>hit.x+hit.w-Math.min(5,hit.w*.12))id='transition';
   gesture={x,y,hit,id,start:note()[id],changed:false};cvs.setPointerCapture(e.pointerId);monitorNote(current(),note());
 };
 cvs.onpointermove=e=>{
@@ -274,7 +292,10 @@ cvs.onpointermove=e=>{
     }
     return;
   }
-  if(!gesture)return;
+  if(!gesture){
+    if(activeTool==='pitch'||activeTool==='main')cvs.style.cursor=connectionAt(...point(e))?'ns-resize':'';
+    return;
+  }
   const [x,y]=point(e),g=gesture,dx=x-g.x,dy=g.y-y;
   if(!g.changed&&Math.abs(dx)+Math.abs(dy)<3)return;
   if(!g.changed){
@@ -286,9 +307,12 @@ cvs.onpointermove=e=>{
   if(g.id==='pitch'||g.id==='formant')delta=dy/g.hit.unit;
   else if(['offset','length','fadeIn','fadeOut'].includes(g.id))delta=dx/timelineScale.scale;
   else if(['gain','sibilant'].includes(g.id))delta=dy*.15;
+  else if(g.id==='transition')delta=dy/(Math.abs(g.hit.rise)>6?g.hit.rise:48);
   else delta=dy*.007;
   const value=clamp(g.start+delta,min/factor,max/factor);
-  adjust(g.id,value);updateMonitor();noteInfo();draw();
+  adjust(g.id,value);updateMonitor();
+  if(g.id==='transition')status('Pitch connection · '+Math.round(value*100)+'%');else noteInfo();
+  draw();
 };
 cvs.onpointerup=e=>{
   if(e.button!==0)return;

@@ -57,7 +57,7 @@ function backingHarmony(channels, rate) {
   });
   const duration=channels[0].length/rate,window=Float64Array.from({length:n},(_,i)=>.5-.5*Math.cos(2*Math.PI*i/(n-1)));
   const real=new Float64Array(n),imag=new Float64Array(n),mag=new Float64Array(n/2);
-  const frames=[];
+  const frames=[],salience=[];
   for(let frame=0;frame*CHORD_HOP<duration;frame++) {
     const offset=Math.round((frame+.5)*CHORD_HOP*sr)-n/2,chroma=new Float64Array(12);
     for(const signal of down) {
@@ -75,12 +75,14 @@ function backingHarmony(channels, rate) {
         chroma[(key+120)%12]+=m*closeness/Math.max(1,hz/800);
       }
     }
+    const total=chroma.reduce((sum,value)=>sum+value,0);
+    salience.push(total>.05?Array.from(chroma,value=>value/total):null);
     frames.push(identifyChord(chroma));
   }
   // Drop isolated estimates, including ones straddling an actual chord change.
   const same=(a,b)=>a&&b&&a.root===b.root&&a.suffix===b.suffix;
   const stable=frames.map((c,i)=>same(c,frames[i-1])||same(c,frames[i+1])?c:null);
-  return {frames:stable,duration};
+  return {frames:stable,salience,duration};
 }
 
 function harmonyForNote(guide,n) {
@@ -96,4 +98,21 @@ function harmonyForNote(guide,n) {
   for(const v of votes.values())if(!best||v.weight>best.weight)best=v;
   if(!best||best.coverage<(end-start)*.58||best.weight<(end-start)*.42)return null;
   return {...best.chord,confidence:best.weight/(end-start)};
+}
+
+function backingTonesForNote(guide,n){
+  if(!guide.salience)return null;
+  const start=n.s+n.offset,end=n.e+n.offset+n.length;
+  const weights=new Float64Array(12);
+  let coverage=0;
+  for(let i=Math.max(0,Math.floor(start/CHORD_HOP));i<guide.salience.length&&i*CHORD_HOP<end;i++){
+    const frame=guide.salience[i];if(!frame)continue;
+    const overlap=Math.min(end,(i+1)*CHORD_HOP,guide.duration)-Math.max(start,i*CHORD_HOP);
+    coverage+=overlap;
+    for(let pc=0;pc<12;pc++)weights[pc]+=frame[pc]*overlap;
+  }
+  if(coverage<(end-start)*.45)return null;
+  const peak=Math.max(...weights)/coverage;
+  if(peak<.15)return null;
+  return Array.from(weights,value=>value/(peak*coverage));
 }

@@ -58,11 +58,14 @@ function slowContour(frames) {
   });
 }
 
+function connectedNotes(n,next){
+  return !!next&&!n.hard&&next.s-n.e<.06&&next.s+next.offset-(n.e+n.offset+n.length)<.06;
+}
 function pitchAdjustment(n,next,pitch,slowPitch,sec) {
   const fraction=clamp((sec-n.s)/(n.e-n.s),0,1);
   const edge=n.hard?1:clamp(Math.min(sec-n.s,n.e-sec)/.012,0,1);
   let shift=edge*(n.pitch+(n.drift-1)*(slowPitch-n.p)+(n.mod-1)*(pitch-slowPitch));
-  if(n.transition && !n.hard && next && next.s-n.e<.06)
+  if(n.transition && connectedNotes(n,next))
     shift+=n.transition*(next.p+next.pitch-n.p-n.pitch)*clamp((fraction-.72)/.28,0,1);
   return shift;
 }
@@ -70,7 +73,7 @@ function pitchAdjustment(n,next,pitch,slowPitch,sec) {
 function renderTrack(channels,rate,frames,notes) {
   if(!notes.some(edited))return channels;
   const duration=channels[0].length/rate, map=timeMap(notes,duration);
-  const mono=channels[0], marks=pitchMarks(mono,rate,frames), size=mono.length;
+  const mono=vocalChannel(channels), marks=pitchMarks(mono,rate,frames), size=mono.length;
   const out=channels.map(()=>new Float32Array(size)), weight=new Float32Array(size);
   const gains=new Float32Array(size), dry=new Float32Array(size);
   const params=notes.map((n,i)=>{
