@@ -1,9 +1,7 @@
-// Short renders use the same vocal processor as playback. During a pitch drag,
-// detune the active preview immediately while the next render is being prepared.
 let monitorVoice=null,monitorEnabled=true;
 function stopMonitor() {
   const v=monitorVoice;monitorVoice=null;if(!v)return;
-  clearTimeout(v.timer);fadeVoice(v.audio);
+  fadeVoice(v.audio);
 }
 function fadeVoice(audio) {
   if(!audio)return;
@@ -13,14 +11,13 @@ function fadeVoice(audio) {
 }
 function monitorNote(t,n) {
   stopMonitor();if(!monitorEnabled)return;
-  const v={track:t,n,held:true,revision:0,pending:false,audio:null};monitorVoice=v;
+  const v={track:t,n,held:true,audio:null};monitorVoice=v;
   context??=new AudioContext();
   context.resume().then(()=>renderMonitor(v)).catch(e=>{if(monitorVoice===v){stopMonitor();status(e.message,true);}});
 }
 async function renderMonitor(v) {
-  if(v!==monitorVoice||v.pending)return;
-  v.pending=true;
-  const version=v.revision,t=v.track,n={...v.n},rate=t.rate;
+  if(v!==monitorVoice)return;
+  const t=v.track,n={...v.n},rate=t.rate;
   try {
     // Work on at most a syllable at a time, even for long sustained notes.
     const start=Math.round(n.s*rate),duration=Math.min(.85,n.e-n.s);
@@ -38,24 +35,42 @@ async function renderMonitor(v) {
       for(let j=0;j<edge;j++){data[j]*=j/edge;data[outSize-1-j]*=j/edge;}
       buf.copyToChannel(data,i);
     });
+    // Loop a stable interior vowel, excluding the onset and release. Align
+    // the wrap to a pitch period and blend its tail into the preceding cycle.
+    const period=Math.max(2,Math.round(rate/midiHz(n.p+n.pitch)));
+    const waveform=buf.getChannelData(0), width=Math.max(2,Math.floor(outSize*.24));
+    let startLoop=Math.floor(outSize*.22),best=-Infinity;
+    for(let k=startLoop;k<outSize*.62;k+=Math.max(1,period)){
+      let energy=0,variation=0,previous=0;
+      for(let j=0;j<width;j+=8){
+        const level=Math.abs(waveform[k+j]||0);
+        energy+=level;variation+=Math.abs(level-previous);previous=level;
+      }
+      const score=energy-.35*variation;
+      if(score>best){best=score;startLoop=k;}
+    }
+    const loopLength=Math.min(width,Math.max(period,Math.round(width/period)*period));
+    const endLoop=Math.min(outSize-1,startLoop+loopLength);
+    const blend=Math.min(period*2,startLoop,Math.floor((endLoop-startLoop)/3));
+    for(let c=0;c<buf.numberOfChannels;c++){
+      const data=buf.getChannelData(c);
+      for(let j=0;j<blend;j++){
+        const mix=(j+1)/blend;
+        data[endLoop-blend+j]=data[endLoop-blend+j]*(1-mix)+data[startLoop-blend+j]*mix;
+      }
+    }
     const src=context.createBufferSource(),env=context.createGain(),level=context.createGain(),panner=context.createStereoPanner();
-    src.buffer=buf;src.loop=v.held;src.detune.value=(v.n.pitch-n.pitch)*100;
+    src.buffer=buf;src.loopStart=startLoop/rate;src.loopEnd=endLoop/rate;src.loop=v.held;src.detune.value=(v.n.pitch-n.pitch)*100;
     src.connect(env).connect(level).connect(panner).connect(context.destination);
-    const previous=v.audio;
     v.audio={src,env,level,panner,pitch:n.pitch};applyMix(t,true);
     const now=context.currentTime;env.gain.setValueAtTime(0,now);env.gain.linearRampToValueAtTime(1,now+.006);
     src.onended=()=>{src.disconnect();env.disconnect();level.disconnect();panner.disconnect();if(v.audio?.src===src&&!v.held&&monitorVoice===v)monitorVoice=null;};
-    src.start();fadeVoice(previous);
+    src.start();
   }catch(e){if(v===monitorVoice){stopMonitor();status('Note preview: '+e.message,true);}}
-  finally{v.pending=false;if(v===monitorVoice&&v.held&&v.revision!==version)scheduleMonitor(v);}
-}
-function scheduleMonitor(v){
-  clearTimeout(v.timer);v.timer=setTimeout(()=>renderMonitor(v),70);
 }
 function updateMonitor(){
-  const v=monitorVoice;if(!v||!v.held)return;
-  if(v.audio)v.audio.src.detune.setTargetAtTime((v.n.pitch-v.audio.pitch)*100,context.currentTime,.008);
-  v.revision++;if(!v.pending)scheduleMonitor(v);
+  const v=monitorVoice;if(!v?.held||!v.audio)return;
+  v.audio.src.detune.setTargetAtTime((v.n.pitch-v.audio.pitch)*100,context.currentTime,.012);
 }
 function releaseMonitor(dragged){
   const v=monitorVoice;if(!v)return;

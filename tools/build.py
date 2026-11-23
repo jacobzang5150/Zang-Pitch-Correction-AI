@@ -1,4 +1,5 @@
 """Build the portable editor. With --mac, package the offline macOS bundle."""
+import base64
 import argparse
 from pathlib import Path
 import plistlib
@@ -12,6 +13,8 @@ engine = "\n".join((src / f).read_text() for f in ["boundary-model.js", "analysi
 ui = "\n".join((src / f).read_text() for f in ["files.js", "app.js", "monitor.js", "toolbox.js", "timeline.js"])
 html = (src / "editor.html").read_text().replace("/* STYLE */", (src / "style.css").read_text())
 html = html.replace("/* ENGINE */", engine).replace("/* APP */", engine + "\n" + ui)
+font = base64.b64encode((src/"fonts"/"space-grotesk.woff").read_bytes()).decode("ascii")
+html = html.replace("FONT_DATA", font).replace("</head>", "<!-- Bundled font license\n"+(src/"fonts"/"OFL.txt").read_text()+"\n-->\n</head>")
 editor = root / (name + ".html")
 editor.write_text(html)
 parser = argparse.ArgumentParser()
@@ -26,8 +29,8 @@ if parser.parse_args().mac:
         binary.parent.mkdir()
         (resources / editor.name).write_bytes(editor.read_bytes())
         info = dict(CFBundleExecutable="ZangPitch",CFBundleIdentifier="music.zang.pitchcorrection.beta",
-                    CFBundleName="Zang Pitch Correction AI",CFBundlePackageType="APPL",CFBundleVersion="3",
-                    CFBundleShortVersionString="0.3.0",LSMinimumSystemVersion="12.0",
+                    CFBundleName="Zang Pitch Correction AI",CFBundlePackageType="APPL",CFBundleVersion="4",
+                    CFBundleShortVersionString="0.4.0",LSMinimumSystemVersion="12.0",
                     CFBundleInfoDictionaryVersion="6.0",NSHighResolutionCapable=True)
         (contents/"Info.plist").write_bytes(plistlib.dumps(info))
         binary.write_bytes((root/"mac"/"ZangPitch").read_bytes())

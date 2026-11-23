@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-const colors=['#82c9ad','#e6b76e','#a89bda','#78b9d4','#df9697','#b9c783'];
+const colors=['#ff6474','#a7a1f5','#77b9db','#eca487','#ddb1d7','#87bbb5'];
 const names=['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
 const noteName=p=>names[((Math.round(p)%12)+12)%12]+(Math.floor(Math.round(p)/12)-1);
 const seconds=t=>Math.floor(t/60)+':'+(t%60).toFixed(2).padStart(5,'0');
@@ -75,9 +75,8 @@ async function rendered(t) {
   if(!t.cache)t.cache=await dsp('render',t.channels,t.rate,t.frames,t.notes);
   return t.cache;
 }
-function stop(keep=true) {
+function stop() {
   stopMonitor();
-  if(playing&&keep)position=Math.min(duration(),context.currentTime-startClock);
   playing=false;playToken++;
   for(const s of sources){try{s.stop();}catch{}s.disconnect();}
   for(const {level,panner} of mixerNodes.values()){level.disconnect();panner.disconnect();}
@@ -95,15 +94,15 @@ function applyMix(t,initial=false) {
     else param.setTargetAtTime(value,now,.008);
   }
 }
-async function play() {
+async function play(from=position) {
   if(!tracks.length)return;stopMonitor();if(playing){stop();return;}
   context??=new AudioContext();await context.resume();
   const token=++playToken, batch=[];
-  if(position>=duration()-.02)position=0;
+
   for(const t of tracks){
     status('Preparing playback…');
     const ch=original?t.channels:await rendered(t);if(token!==playToken)return;
-    if(position>=ch[0].length/t.rate)continue;
+    if(from>=ch[0].length/t.rate)continue;
     const buf=context.createBuffer(ch.length,ch[0].length,t.rate);
     ch.forEach((x,i)=>buf.copyToChannel(x,i));
     const src=context.createBufferSource();src.buffer=buf;
@@ -112,10 +111,10 @@ async function play() {
     src.connect(level).connect(panner).connect(context.destination);batch.push(src);
   }
   if(!batch.length){status('No audible tracks at the cursor.');return;}
-  const when=context.currentTime+.04;startClock=when-position;sources=batch;playing=true;
-  for(const src of sources)src.start(when,position);
-  $('play').textContent='Ⅱ Pause';status(original?'Playing original stems':'Playing edited stems');
-  function frame(){if(!playing||token!==playToken)return;if(liveTime()>=duration()){position=0;stop(false);return;}draw();requestAnimationFrame(frame);}
+  const when=context.currentTime+.04;startClock=when-from;sources=batch;playing=true;
+  for(const src of sources)src.start(when,from);
+  $('play').textContent='■ Stop';status(original?'Playing original stems':'Playing edited stems');
+  function frame(){if(!playing||token!==playToken)return;if(liveTime()>=duration()){stop();return;}draw();requestAnimationFrame(frame);}
   frame();
 }
 function download(blob,filename) {
@@ -204,7 +203,7 @@ $('align').onclick=()=>run(async()=>{
   remember();a.forEach((t,i)=>{t.notes=results[i];invalidate(t);});status('Aligned '+a.length+' vocal track(s) to '+guide.name+'.');
 });
 $('play').onclick=()=>run(play);$('rewind').onclick=()=>{stop();position=0;draw();};
-$('ab').onclick=()=>run(async()=>{const resume=playing;stop();original=!original;$('ab').textContent='Listen: '+(original?'Original':'Edited');$('ab').setAttribute('aria-pressed',original);if(resume)await play();});
+$('ab').onclick=()=>run(async()=>{const resume=playing,at=liveTime();stop();original=!original;$('ab').textContent='Listen: '+(original?'Original':'Edited');$('ab').setAttribute('aria-pressed',original);if(resume)await play(at);});
 $('undo').onclick=()=>history(undoStack,redoStack);$('redo').onclick=()=>history(redoStack,undoStack);
 $('zoom').oninput=$('pan').oninput=()=>draw();
 $('view').onchange=()=>{dirty=true;draw();};
