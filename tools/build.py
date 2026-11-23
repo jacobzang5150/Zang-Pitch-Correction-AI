@@ -3,10 +3,12 @@ import base64
 import argparse
 from pathlib import Path
 import plistlib
+import subprocess
 import tempfile
 import zipfile
 
 root = Path(__file__).resolve().parents[1]
+subprocess.run(["node", "tests/audio.cjs"], cwd=root, check=True)
 src = root / "src"
 name = "Zang-Pitch-Correction-AI"
 engine = "\n".join((src / f).read_text() for f in ["boundary-model.js", "analysis.js", "harmony.js", "render.js"])

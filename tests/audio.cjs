@@ -49,6 +49,36 @@ const differences=[];for(let i=1200;i<out.length-1200;i+=120){
     assert.ok(Math.abs(cleanMarks.length-repaired.length)<=1);
     assert.ok(Math.abs(pitchAdjustment(notes[1],notes[2],60,60,.25,notes[0])-.75)<.001);
   }
+  // A continuous vowel moves back and forth between dry and pitch-corrected
+  // blobs. Measure the exported samples across each edit, including at 96 kHz.
+  for(const sampleRate of [44100,48000,96000]){
+    let oscillator=0;
+    const signal=Float32Array.from({length:sampleRate*2},(_,i)=>{
+      const sec=i/sampleRate;
+      oscillator+=2*Math.PI*midiHz(54+.28*Math.sin(31*sec))/sampleRate;
+      return .42*Math.sin(oscillator)+.16*Math.sin(2*oscillator+.5)+.08*Math.sin(3*oscillator);
+    });
+    const edits=[.39,0,-.45,0,.08,0,.72,0].map((shift,i)=>({
+      ...defaultNote(i/4,(i+1)/4,54,1),pitch:shift
+    }));
+    const analysis=analyze(signal,sampleRate);
+    const rendered=renderTrack([signal],sampleRate,analysis.frames,edits);
+    const exported=decodeWav(wavBytes(rendered,sampleRate).buffer).channels[0];
+    const worst=[];
+    for(const note of edits.slice(1)){
+      let loss=0;
+      for(let ms=-10;ms<=10;ms++){
+        const start=Math.round((note.s+ms/1000)*sampleRate);
+        let dry=0,wet=0;
+        for(let j=start;j<start+Math.round(.010*sampleRate);j++){
+          dry+=signal[j]**2;wet+=exported[j]**2;
+        }
+        loss=Math.max(loss,10*Math.log10(dry/wet));
+      }
+      worst.push(loss);
+    }
+    assert.ok(Math.max(...worst)<1,'Boundary dropout at '+sampleRate+' Hz: '+Math.max(...worst).toFixed(2)+' dB');
+  }
   const original=make(60.31), {frames,notes}=analyze(original,rate);
   assert.equal(notes.length,2);assert.ok(Math.abs(notes[0].p-60.31)<.09);
   assert.equal(renderTrack([original],rate,frames,notes)[0],original);
