@@ -165,7 +165,6 @@ $('newProject').onclick=()=>{
 };
 $('openProject').onclick=()=>$('projectFile').click();
 $('import').onclick=()=>$('audioFiles').click();
-$('demo').onclick=()=>run(async()=>{await addFiles(demoTracks());title('Demo · Harmony stack');});
 window.addEventListener('dragover',e=>e.preventDefault());
 window.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files.length)run(()=>importWavs(e.dataTransfer.files));});
 $('save').onclick=()=>{if(!tracks.length)return;download(projectBlob(tracks,settings()),safeName(projectTitle)+'.zpitch');dirty=false;status('Project download requested.');};

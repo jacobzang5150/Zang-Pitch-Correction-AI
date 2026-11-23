@@ -95,6 +95,8 @@ function noteInfo(){
   status(message);
 }
 function refresh(){
+  const importSlot=tracks.length?$('loadedImports'):$('empty');
+  if($('importActions').parentElement!==importSlot)importSlot.append($('importActions'));
   trackList();$('empty').hidden=!!tracks.length;$('trackCount').textContent=tracks.length;
   for(const id of ['save','export','play','rewind','ab','stem','tune','quant','firstpass'])$(id).disabled=!tracks.length;
   $('align').disabled=tracks.length<2;$('undo').disabled=!undoStack.length;$('redo').disabled=!redoStack.length;

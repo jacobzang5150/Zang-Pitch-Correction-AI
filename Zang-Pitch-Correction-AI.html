@@ -14,6 +14,8 @@ summary{cursor:pointer;font-size:12px;color:var(--muted);padding:5px 0}summary:h
 #toolPalette svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 #toolPalette button:hover,#toolPalette button:focus-visible{color:#ff919d;background:#44252e}
 .noteActions{justify-content:flex-end}
+
+#importActions{display:flex;align-items:center;justify-content:center;gap:8px}#loadedImports:empty{display:none}
 </style><!-- Bundled font license
 Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk)
 
@@ -111,18 +113,18 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 -->
 </head><body>
-<header><div class="brand"><b class="mark" aria-hidden="true">∿</b><div><h1>Zang <span>Pitch Correction</span></h1><small>STANDALONE BETA · 0.4</small></div></div>
+<header><div class="brand"><b class="mark" aria-hidden="true">∿</b><div><h1>Zang <span>Pitch Correction</span></h1><small>STANDALONE BETA · 0.4.1</small></div></div>
 <nav><details class="projectMenu"><summary>Project</summary><div><button id="newProject">New project</button><button id="openProject">Open project</button><button id="stem">Export active WAV</button></div></details><button id="save">Save project</button><button id="export" class="accent">Export stems ↗</button></nav></header>
 <div class="layout"><aside><div class="section"><h2>Mixer</h2><span id="trackCount">0</span></div>
-<button id="import" class="full">＋ Import WAVs</button><button id="importBacking" class="full">Import backing WAV</button><div id="tracks"></div>
+<div id="tracks"></div>
 <div class="panel"><details><summary>Pitch settings</summary><label>Chord guide<select id="chordGuide"><option value="-1">Key and scale only</option></select></label><div class="pair"><label>Key<select id="root"></select></label><label>Scale<select id="scale"><option value="chromatic">Chromatic</option><option value="major">Major</option><option value="minor">Minor</option></select></label></div>
 <label>Pitch strength <output id="strengthOut">85%</output><input type="range" id="strength" min="0" max="100" value="85"></label></details><button id="tune" class="full teal">Tune checked tracks</button>
 <details><summary>Timing</summary><div class="pair"><label>Tempo<input type="number" id="bpm" min="20" max="400" value="120"></label><label>Grid<select id="grid"><option value="4">1/4</option><option value="8" selected>1/8</option><option value="16">1/16</option><option value="12">1/8 triplet</option></select></label></div>
 <label>Timing strength <output id="timeOut">65%</output><input type="range" id="timing" min="0" max="100" value="65"></label><button id="quant" class="full">Correct to grid</button><button id="firstpass" class="full teal">Tune + correct timing</button>
 </details><details><summary>BGV alignment</summary><label>Guide track<select id="guide"></select></label><button id="align" class="full">Align checked BGVs</button></details></div></aside>
 <main><div class="editHead"><div><h2 id="projectTitle">Untitled project</h2></div><select id="view" aria-label="Track view"><option value="stacked">Stacked lanes</option><option value="overlay">Pitch overlay</option></select></div>
-<div class="toolbar"><button id="toolButton" aria-haspopup="dialog" aria-expanded="false" title="Choose tool (right-click the editor)">Main tool ▾</button><button id="monitor" aria-pressed="true" title="Audition vocal notes while editing">Monitor on</button><button id="undo" title="Undo (⌘Z)">↶ Undo</button><button id="redo" title="Redo (⇧⌘Z)">↷ Redo</button><label class="zoom">Zoom <input id="zoom" type="range" min="1" max="256" step="any" value="1"></label></div>
-<div id="timeline"><canvas tabindex="0" id="canvas" aria-label="Vocal pitch timeline"></canvas><div id="empty"><div class="wave" aria-hidden="true">∿</div><h2>Drop your vocal stems here</h2><p>Import WAVs with the same start time, or try a three-part demo.</p><button id="demo">Load demo stack</button></div></div>
+<div class="toolbar"><button id="toolButton" aria-haspopup="dialog" aria-expanded="false" title="Choose tool (right-click the editor)">Main tool ▾</button><button id="monitor" aria-pressed="true" title="Audition vocal notes while editing">Monitor on</button><button id="undo" title="Undo (⌘Z)">↶ Undo</button><button id="redo" title="Redo (⇧⌘Z)">↷ Redo</button><div id="loadedImports"></div><label class="zoom">Zoom <input id="zoom" type="range" min="1" max="256" step="any" value="1"></label></div>
+<div id="timeline"><canvas tabindex="0" id="canvas" aria-label="Vocal pitch timeline"></canvas><div id="empty"><div class="wave" aria-hidden="true">∿</div><h2>Drop your vocal stems here</h2><p>Use WAVs with the same start time.</p><div id="importActions"><button id="import" class="accent">Import WAVs</button><button id="importBacking">Import Backing Track</button></div></div></div>
 <label class="pan">Timeline position <input id="pan" type="range" min="0" max="1000" step="any" value="0"></label>
 <div class="transport"><button id="play" class="accent">▶ Play</button><button id="rewind" title="Return to start">↤</button><strong id="clock">0:00.00</strong><button id="ab" aria-pressed="false">Listen: Edited</button><span id="duration"></span></div>
 <footer role="status" id="status">Ready</footer></main></div>
@@ -1112,24 +1114,6 @@ function readProject(buf) {
   if(pos!==buf.byteLength)throw Error('Unexpected project data.');
   return {tracks,settings:meta.settings||{}};
 }
-function demoTracks() {
-  const rate=24000, pitches=[60,64,67,65,64,62,60,62,64,67,69,67],starts=[.4,.88,1.35,2.15,2.65,3.12,3.85,4.38,4.9,5.65,6.15,6.8];
-  return ['Lead vocal','High harmony','Harmony double'].map((name,v)=>{
-    const samples=new Float32Array(rate*8);
-    for(let k=0;k<starts.length;k++) {
-      let phase=0; const start=starts[k]+(v?(.07*Math.sin(k*2+v)+.035):0), len=Math.min(.62,(starts[k+1]??7.6)-starts[k]-.07);
-      for(let j=0;j<len*rate;j++) {
-        const t=j/rate, env=Math.min(1,t/.045,(len-t)/.065);
-        const pitch=pitches[k]+(v?[4,3,3,4,3,3][k%6]:0)+.23*Math.sin(2*k+v)+.12*Math.sin(36*t)-.45*Math.exp(-30*t);
-        phase+=2*Math.PI*midiHz(pitch)/rate;
-        let y=0;
-        for(let h=1;h<=12;h++)y+=Math.sin(phase*h)*(1+.55*Math.cos(h+k))/h;
-        samples[Math.floor(start*rate)+j]=y*.16*env;
-      }
-    }
-    return {name,channels:[samples],rate};
-  });
-}
 
 'use strict';
 const $=id=>document.getElementById(id);
@@ -1298,7 +1282,6 @@ $('newProject').onclick=()=>{
 };
 $('openProject').onclick=()=>$('projectFile').click();
 $('import').onclick=()=>$('audioFiles').click();
-$('demo').onclick=()=>run(async()=>{await addFiles(demoTracks());title('Demo · Harmony stack');});
 window.addEventListener('dragover',e=>e.preventDefault());
 window.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files.length)run(()=>importWavs(e.dataTransfer.files));});
 $('save').onclick=()=>{if(!tracks.length)return;download(projectBlob(tracks,settings()),safeName(projectTitle)+'.zpitch');dirty=false;status('Project download requested.');};
@@ -1641,6 +1624,8 @@ function noteInfo(){
   status(message);
 }
 function refresh(){
+  const importSlot=tracks.length?$('loadedImports'):$('empty');
+  if($('importActions').parentElement!==importSlot)importSlot.append($('importActions'));
   trackList();$('empty').hidden=!!tracks.length;$('trackCount').textContent=tracks.length;
   for(const id of ['save','export','play','rewind','ab','stem','tune','quant','firstpass'])$(id).disabled=!tracks.length;
   $('align').disabled=tracks.length<2;$('undo').disabled=!undoStack.length;$('redo').disabled=!redoStack.length;

@@ -8,7 +8,15 @@ const {chromium}=require('playwright'),path=require('node:path'),fs=require('nod
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(require('node:url').pathToFileURL(path.resolve('Zang-Pitch-Correction-AI.html')).href);
     const click=async id=>{await page.locator('#'+id).click();await page.waitForFunction(()=>!document.body.classList.contains('working'));};
-    await click('demo');assert.equal(await page.locator('.track').count(),3);
+    const imports=page.locator('#empty #importActions');
+    assert.deepEqual(await imports.getByRole('button').allTextContents(),['Import WAVs','Import Backing Track']);
+    assert.equal(await page.getByText('Load demo stack').count(),0);
+    await page.addScriptTag({path:path.resolve('tests/vocal-fixture.js')});
+    const fixture=await page.evaluate(()=>vocalFixture().map(t=>({name:t.name+'.wav',bytes:Array.from(wavBytes(t.channels,t.rate))})));
+    const chooser=page.waitForEvent('filechooser');await imports.getByText('Import WAVs').click();
+    await (await chooser).setFiles(fixture.map(t=>({name:t.name,mimeType:'audio/wav',buffer:Buffer.from(t.bytes)})));
+    await page.waitForFunction(()=>document.querySelectorAll('.track').length===3&&!document.body.classList.contains('working'));
+    assert.equal(await page.locator('#loadedImports button').count(),2);
     await click('tune');await page.getByText('BGV alignment',{exact:true}).click();await click('align');
     const h=await page.evaluate(()=>hits.find(h=>h.i===0&&h.ni===0));
     const canvas=page.locator('canvas');await canvas.scrollIntoViewIfNeeded();
@@ -42,8 +50,8 @@ const {chromium}=require('playwright'),path=require('node:path'),fs=require('nod
     await page.evaluate(()=>{pitchZoom=1;$('timeline').scrollTop=0;});
     await page.locator('#zoom').press('End');assert.ok(await page.locator('#zoom').inputValue()>48);
     await page.locator('#zoom').press('Home');
-    const vol=page.getByRole('slider',{name:'Volume Lead vocal',exact:true});
-    const pan=page.getByRole('slider',{name:'Pan Lead vocal',exact:true});
+    const vol=page.getByRole('slider',{name:'Volume Lead vocal.wav',exact:true});
+    const pan=page.getByRole('slider',{name:'Pan Lead vocal.wav',exact:true});
     await vol.press('ArrowDown');await pan.press('Shift+ArrowRight');
     assert.equal(await vol.getAttribute('aria-valuenow'),'-1');
     assert.equal(await pan.getAttribute('aria-valuenow'),'10');
@@ -101,6 +109,6 @@ const {chromium}=require('playwright'),path=require('node:path'),fs=require('nod
     await page.waitForFunction(()=>!busy && chordGuide()===null);
     assert.deepEqual(errors,[]);
     if(process.env.SCREENSHOT)await page.screenshot({path:process.env.SCREENSHOT});
-    console.log('PASS: offline file launch, three-track demo, tuning, guide alignment, mouse editing, undo/redo, A/B playback, original-rate WAV and ZIP export, project recall and WAV import.');
+    console.log('PASS: offline file launch, three-track WAV import, tuning, guide alignment, mouse editing, undo/redo, A/B playback, original-rate WAV and ZIP export, project recall and WAV import.');
   } finally{await browser.close();await fs.rm(tmp,{recursive:true,force:true});}
 })().catch(e=>{console.error(e);process.exitCode=1;});
