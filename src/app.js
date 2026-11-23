@@ -65,7 +65,7 @@ async function addFiles(rawTracks,replace=false) {
   if(!rawTracks.length)return;stop();
   const list=[];
   for(const raw of rawTracks)list.push(await prepare(raw,(replace?0:tracks.length)+list.length));
-  if(replace){tracks.length=0;position=0;active=0;}
+  if(replace){resetViewport();tracks.length=0;position=0;active=0;}
   tracks.push(...list);selected=-1;dirty=true;undoStack.length=0;redoStack.length=0;
   if(tracks.length===list.length){title(list[0].name.replace(/\.(wav|wave)$/i,'')+' · Vocals');$('guide').dataset.pending='0';}
   status('Ready · '+list.length+' track'+(list.length===1?'':'s')+' loaded.');
@@ -160,7 +160,7 @@ $('projectFile').onchange=e=>run(async()=>{
   }finally{e.target.value='';}
 });
 $('newProject').onclick=()=>{
-  if(!mayReplace())return;stop();tracks.length=0;chordSource=-1;active=0;selected=-1;position=0;
+  if(!mayReplace())return;stop();resetViewport();tracks.length=0;chordSource=-1;active=0;selected=-1;position=0;
   undoStack.length=redoStack.length=0;dirty=false;title('Untitled project');refresh();status('Ready to import stems.');
 };
 $('openProject').onclick=()=>$('projectFile').click();
@@ -204,7 +204,7 @@ $('align').onclick=()=>run(async()=>{
 $('play').onclick=()=>run(play);$('rewind').onclick=()=>{stop();position=0;draw();};
 $('ab').onclick=()=>run(async()=>{const resume=playing,at=liveTime();stop();original=!original;$('ab').textContent='Listen: '+(original?'Original':'Edited');$('ab').setAttribute('aria-pressed',original);if(resume)await play(at);});
 $('undo').onclick=()=>history(undoStack,redoStack);$('redo').onclick=()=>history(redoStack,undoStack);
-$('zoom').oninput=$('pan').oninput=()=>draw();
+$('zoom').oninput=$('pan').oninput=()=>{timeOverhang=0;draw();};
 $('view').onchange=()=>{dirty=true;draw();};
 for(const id of ['root','scale','strength','timing','bpm','grid','guide'])$(id).onchange=()=>{dirty=true;};
 for(const [inp,out] of [['strength','strengthOut'],['timing','timeOut']])$(inp).oninput=()=>$(out).textContent=$(inp).value+'%';

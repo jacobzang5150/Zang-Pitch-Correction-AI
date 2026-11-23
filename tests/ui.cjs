@@ -25,6 +25,7 @@ const {chromium}=require('playwright'),path=require('node:path'),fs=require('nod
     await page.mouse.click(hitX,hitY,{button:'right'});
     await page.getByRole('button',{name:'Pitch',exact:true}).hover();
     const palette=page.locator('#toolPalette');
+    await page.getByRole('tooltip').filter({hasText:/^Pitch$/}).waitFor();
     assert.equal((await palette.innerText()).trim(),'');
     assert.equal(await palette.getByRole('button',{name:'Pitch',exact:true}).count(),1);
     const bounds=await Promise.all(['Pitch','Pitch modulation','Pitch drift'].map(label=>palette.getByRole('button',{name:label,exact:true}).boundingBox()));
@@ -32,7 +33,14 @@ const {chromium}=require('playwright'),path=require('node:path'),fs=require('nod
     await palette.getByRole('button',{name:'Pitch modulation',exact:true}).click();
     assert.equal(await page.evaluate(()=>activeTool),'mod');
     await page.mouse.click(hitX,hitY,{button:'right'});
-    await page.getByRole('button',{name:'Main tool',exact:true}).click();
+    const main=palette.getByRole('button',{name:'Main tool',exact:true});
+    await main.hover();
+    await palette.getByRole('button',{name:'Drag view',exact:true}).click();
+    await page.mouse.move(hitX,hitY);await page.mouse.down();
+    await page.mouse.move(hitX+36,hitY+20,{steps:4});await page.mouse.up();
+    assert.ok(await page.evaluate(()=>timelineScale.origin<0 && pitchPan>0));
+    await page.mouse.down();await page.mouse.move(hitX,hitY,{steps:4});await page.mouse.up();
+    await page.mouse.click(hitX,hitY,{button:'right'});await main.click();
     assert.equal(await page.locator('#inspector').count(),0);
     await page.keyboard.down('Shift');await page.keyboard.down('Alt');await page.keyboard.down('Meta');
     await page.mouse.click(hitX,hitY);
@@ -41,7 +49,7 @@ const {chromium}=require('playwright'),path=require('node:path'),fs=require('nod
     assert.equal(await page.evaluate(()=>monitorVoice),null);
     await page.keyboard.down('Alt');await page.keyboard.down('Meta');
     await page.mouse.move(rect.x+220,rect.y+100);await page.mouse.down();
-    await page.mouse.move(rect.x+165,rect.y+150,{steps:4});await page.mouse.up();
+    await page.mouse.move(rect.x+275,rect.y+150,{steps:4});await page.mouse.up();
     await page.keyboard.up('Meta');await page.keyboard.up('Alt');
     assert.ok(await page.evaluate(()=>+$('zoom').value>2 && pitchZoom>1));
     const originBefore=await page.evaluate(()=>timelineScale.origin);
@@ -107,6 +115,12 @@ const {chromium}=require('playwright'),path=require('node:path'),fs=require('nod
     assert.ok(await page.evaluate(()=>chordGuide().frames[3].tones.includes(4)));
     await page.getByText('Pitch settings',{exact:true}).click();await page.selectOption('#chordGuide','-1');
     await page.waitForFunction(()=>!busy && chordGuide()===null);
+    const remove=page.getByRole('button',{name:'Delete track: Band.wav',exact:true});
+    page.once('dialog',d=>d.dismiss());await remove.click();
+    assert.equal(await page.locator('.track').count(),5);
+    page.once('dialog',d=>d.accept());await remove.click();
+    assert.equal(await page.locator('.track').count(),4);
+    assert.equal(await page.locator('#chordGuide option').count(),1);
     assert.deepEqual(errors,[]);
     if(process.env.SCREENSHOT)await page.screenshot({path:process.env.SCREENSHOT});
     console.log('PASS: offline file launch, three-track WAV import, tuning, guide alignment, mouse editing, undo/redo, A/B playback, original-rate WAV and ZIP export, project recall and WAV import.');

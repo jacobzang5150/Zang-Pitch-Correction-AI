@@ -1,5 +1,5 @@
 const toolFamilies=[
-  {name:'Main',symbol:'↖',tools:[['main','Main tool'],['scroll','Scroll'],['zoom','Zoom']]},
+  {name:'Main',symbol:'↖',tools:[['main','Main tool'],['scroll','Drag view'],['zoom','Zoom']]},
   {name:'Pitch',symbol:'↕',tools:[['pitch','Pitch'],['mod','Pitch modulation'],['drift','Pitch drift']]},
   {name:'Formant',symbol:'ƒ',tools:[['formant','Formant']]},
   {name:'Amplitude',symbol:'◁',tools:[['gain','Amplitude'],['fadeIn','Fade in'],['fadeOut','Fade out'],['sibilant','Sibilant balance']]},
@@ -9,11 +9,13 @@ const toolFamilies=[
 let activeTool='main',paletteOrigin=null;
 const palette=$('toolPalette');
 function closePalette(restoreFocus=false) {
+  hideToolTip();
   palette.hidden=true;
   $('toolButton').setAttribute('aria-expanded','false');
   if(restoreFocus)paletteOrigin?.focus({preventScroll:true});
 }
 function chooseTool(id,label){
+  cvs.style.cursor=id==='scroll'?'grab':'';
   activeTool=id;$('toolButton').textContent=label+' ▾';
   closePalette(true);
 }
@@ -30,9 +32,25 @@ const toolPaths={
   split:'M11 3v18M3 8h5v8H3m17-8h-5v8h5',merge:'M2 8h5l4 4-4 4H2m20-8h-5l-4 4 4 4h5',
   hard:'M8 4v16m7-16v16',keep:'M3 12l6 6L21 5',reset:'M3 5v6h6M4 10a8 8 0 1 1 1 8'
 };
+let tipTimer;
+const tip=$('toolTip');
+function hideToolTip(){
+  clearTimeout(tipTimer);tip.hidden=true;
+}
+function showToolTip(button){
+  hideToolTip();
+  tipTimer=setTimeout(()=>{
+    if(palette.hidden||!button.offsetWidth)return;
+    tip.textContent=button.getAttribute('aria-label');tip.hidden=false;
+    const r=button.getBoundingClientRect();
+    tip.style.left=clamp(r.left+r.width/2-tip.offsetWidth/2,4,innerWidth-tip.offsetWidth-4)+'px';
+    tip.style.top=(r.top>tip.offsetHeight+8?r.top-tip.offsetHeight-5:r.bottom+5)+'px';
+  },250);
+}
 function iconButton(id,label,activate){
   const b=document.createElement('button');
-  b.setAttribute('aria-label',label);b.title=label;b.dataset.tool=id;b.onclick=activate;
+  b.setAttribute('aria-label',label);b.addEventListener('pointerenter',()=>showToolTip(b));
+  b.addEventListener('focus',()=>showToolTip(b));b.onpointerleave=b.onblur=hideToolTip;b.dataset.tool=id;b.onclick=activate;
   const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg'),path=document.createElementNS(ns,'path');
   svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
   path.setAttribute('d',toolPaths[id]);svg.append(path);b.append(svg);return b;
