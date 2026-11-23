@@ -209,7 +209,7 @@ function draw(){
         let first=true;
         for(let k=Math.ceil(n.s/HOP);k*HOP<n.e;k+=Math.max(1,Math.floor(1/(scale*HOP)))) {
           const f=t.frames[k];if(!f?.p)continue;
-          const u=(k*HOP-n.s)/(n.e-n.s),xx=x(start+u*(end-start)), yy=y(f.p+pitchAdjustment(n,t.notes[ni+1],f.p,t.slow[k],k*HOP));
+          const u=(k*HOP-n.s)/(n.e-n.s),xx=x(start+u*(end-start)), yy=y(f.p+pitchAdjustment(n,t.notes[ni+1],f.p,t.slow[k],k*HOP,t.notes[ni-1]));
           if(first){ctx.moveTo(xx,yy);first=false;}else ctx.lineTo(xx,yy);
         }
         ctx.stroke();

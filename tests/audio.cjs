@@ -29,6 +29,26 @@ vm.runInNewContext(engine+`(async()=>{
   for(const [i,p] of [[32,60],[61,62],[83,64]])assert.ok(Math.abs(playback[i].p-p)<.22);
   const wobble=Array.from({length:80},(_,i)=>({p:60+.32*Math.sin(i*.36)+(i===42?3:0),c:.97,e:.2}));
   assert.equal(segment(wobble,.8).length,1,'vibrato and a brief overshoot stay together');
+  {
+
+let phase=0;
+const samples=Float32Array.from({length:rate*2},(_,i)=>{
+ const t=i/rate;phase+=2*Math.PI*midiHz(60+.42*Math.sin(t*32)+.65*t)/rate;
+ return .3*Math.sin(phase)+.23*Math.sin(phase*2+t*8)+.11*Math.sin(phase*3);
+});
+const frames=analyze(samples,rate).frames;
+const notes=Array.from({length:8},(_,i)=>({...defaultNote(i/4,(i+1)/4,60,.99),pitch:.75}));
+const out=renderTrack([samples],rate,frames,notes)[0];
+const differences=[];for(let i=1200;i<out.length-1200;i+=120){
+ let dry=0,wet=0;for(let j=i;j<i+240;j++){wet+=out[j]**2;dry+=samples[j]**2;}
+ differences.push(Math.abs(10*Math.log10(wet/dry)));
+}
+    assert.ok(Math.max(...differences)<1.5,'Unexpected short level dip on a continuous edited vowel');
+    const corrupted=frames.map(f=>({...f}));corrupted[37].p+=12;
+    const cleanMarks=pitchMarks(samples,rate,frames),repaired=pitchMarks(samples,rate,corrupted);
+    assert.ok(Math.abs(cleanMarks.length-repaired.length)<=1);
+    assert.ok(Math.abs(pitchAdjustment(notes[1],notes[2],60,60,.25,notes[0])-.75)<.001);
+  }
   const original=make(60.31), {frames,notes}=analyze(original,rate);
   assert.equal(notes.length,2);assert.ok(Math.abs(notes[0].p-60.31)<.09);
   assert.equal(renderTrack([original],rate,frames,notes)[0],original);

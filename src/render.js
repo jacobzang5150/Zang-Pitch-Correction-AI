@@ -26,16 +26,33 @@ function interpolateMap(map,value,axis) {
   return a[other]+f*(b[other]-a[other]);
 }
 function pitchMarks(mono,rate,frames) {
-  const positions=[], frameAt=x=>frames[Math.min(frames.length-1,Math.max(0,Math.floor(x/rate/HOP)))];
+  // A one-frame octave error should not double or halve the grain clock.
+  const pitches=frames.map((f,i)=>{
+    const before=frames[i-1]?.p,after=frames[i+1]?.p;
+    if(f.p&&before&&after&&Math.abs(before-after)<1&&Math.abs(f.p-before)>7)return (before+after)/2;
+    return f.p;
+  });
+  const positions=[],pitchAt=x=>pitches[clamp(Math.floor(x/rate/HOP),0,pitches.length-1)];
   let cursor=0;
   while(cursor<mono.length) {
-    const f=frameAt(cursor), period=rate/(f.p?midiHz(f.p):125);
+    const pitch=pitchAt(cursor),period=rate/(pitch?midiHz(pitch):125);
     let best=Math.round(cursor);
-    if(f.p) {
+    if(pitch) {
       const radius=Math.round(period*.25);
+      const previous=positions.at(-1),track=previous!==undefined&&pitchAt(previous);
+      const half=Math.max(3,Math.round(period*.32)),step=Math.max(1,Math.floor(half/8));
       let peak=-Infinity;
-      for(let k=Math.max(0,best-radius,(positions.at(-1)??-1)+1);k<Math.min(mono.length,cursor+radius);k++) {
-        if(mono[k]>peak){peak=mono[k];best=k;}
+      for(let k=Math.max(0,best-radius,(previous??-1)+1);k<Math.min(mono.length,cursor+radius);k++) {
+        let score=mono[k];
+        if(track){
+          let dot=0,energy=0,ref=0;
+          for(let j=-half;j<=half;j+=step){
+            const a=mono[previous+j]||0,b=mono[k+j]||0;
+            dot+=a*b;energy+=b*b;ref+=a*a;
+          }
+          score=dot/Math.sqrt(ref*energy+1e-18)-.08*((k-cursor)/radius)**2;
+        }
+        if(score>peak){peak=score;best=k;}
       }
     }
     if(best>=mono.length)break;
@@ -61,10 +78,16 @@ function slowContour(frames) {
 function connectedNotes(n,next){
   return !!next&&!n.hard&&next.s-n.e<.06&&next.s+next.offset-(n.e+n.offset+n.length)<.06;
 }
-function pitchAdjustment(n,next,pitch,slowPitch,sec) {
+function pitchAdjustment(n,next,pitch,slowPitch,sec,previous) {
   const fraction=clamp((sec-n.s)/(n.e-n.s),0,1);
-  const edge=n.hard?1:clamp(Math.min(sec-n.s,n.e-sec)/.012,0,1);
-  let shift=edge*(n.pitch+(n.drift-1)*(slowPitch-n.p)+(n.mod-1)*(pitch-slowPitch));
+  const linkedBefore=previous&&connectedNotes(previous,n)&&Math.abs(n.s-previous.e)<HOP/2;
+  const linkedAfter=connectedNotes(n,next)&&Math.abs(next.s-n.e)<HOP/2;
+  const start=clamp((sec-n.s)/.012,0,1),end=clamp((n.e-sec)/.012,0,1);
+  const edge=n.hard?1:Math.min(linkedBefore?1:start,linkedAfter?1:end);
+  let center=n.pitch;
+  if(linkedBefore)center+=(previous.pitch-n.pitch)*(1-start)*.5;
+  if(linkedAfter)center+=(next.pitch-n.pitch)*(1-end)*.5;
+  let shift=edge*(center+(n.drift-1)*(slowPitch-n.p)+(n.mod-1)*(pitch-slowPitch));
   if(n.transition && connectedNotes(n,next))
     shift+=n.transition*(next.p+next.pitch-n.p-n.pitch)*clamp((fraction-.72)/.28,0,1);
   return shift;
@@ -82,16 +105,24 @@ function renderTrack(channels,rate,frames,notes) {
       needPitch:Math.abs(n.pitch)+Math.abs(1-n.mod)+Math.abs(1-n.drift)+Math.abs(n.formant)+Math.abs(n.transition)>1e-6};
   });
   const slow=slowContour(frames);
-  let target=0, idx=0, phase=0;
+  let target=marks[0]||0,idx=0,phase=0,markInterval=0;
   while(target<size+rate*.02) {
     const time=target/rate, src=interpolateMap(map,time,1), source=src*rate;
     while(idx+1<params.length && src>params[idx].right)idx++;
     const param=params[idx], n=param.n, active=src>=param.left && src<=param.right;
     const k=clamp(Math.round(src/HOP),0,frames.length-1),f=frames[k];
     const voiced=f.p && src>=n.s && src<=n.e;
-    const shift=active && voiced ? pitchAdjustment(n,notes[idx+1],f.p,slow[k],src):0;
-    const period=rate/(f.p?midiHz(f.p):125);
-    const hop=clamp(period/2**(shift/12),rate/1800,rate/60);
+    const shift=active && voiced ? pitchAdjustment(n,notes[idx+1],f.p,slow[k],src,notes[idx-1]):0;
+    // Advance through measured source cycles. At unity shift this clock
+    // lands on the next actual analysis mark instead of accumulating phase error.
+    while(markInterval+1<marks.length-1&&marks[markInterval+1]<=source)markInterval++;
+    const period=marks[markInterval+1]-marks[markInterval]||rate/(f.p?midiHz(f.p):125);
+    const cycles=2**(-shift/12);
+    const fraction=(source-marks[markInterval])/period+cycles;
+    const cycleIndex=clamp(markInterval+Math.floor(fraction),0,Math.max(0,marks.length-2));
+    const nextPeriod=marks[cycleIndex+1]-marks[cycleIndex]||period;
+    const nextSource=(marks[cycleIndex]??0)+(fraction+markInterval-cycleIndex)*nextPeriod;
+    const hop=clamp(nextSource-source,rate/1800,rate/60);
     while(phase+1<marks.length && Math.abs(marks[phase+1]-source)<Math.abs(marks[phase]-source))phase++;
     const center=marks[phase]||0, formRatio=active&&voiced?2**(n.formant/12):1;
     const radius=Math.ceil(Math.max(hop,period/formRatio)*1.25);
