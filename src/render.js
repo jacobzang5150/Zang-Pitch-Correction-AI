@@ -93,18 +93,37 @@ function pitchAdjustment(n,next,pitch,slowPitch,sec,previous) {
   return shift;
 }
 
+// Measure whether adjacent vocal cycles actually repeat. A pitch estimate alone
+// can persist across a breath, a consonant or a brief tracking error.
+function periodicityWeights(samples,marks){
+  const weights=new Float32Array(marks.length);
+  for(let i=0;i+2<marks.length;i++){
+    const a=marks[i],b=marks[i+1],c=marks[i+2];
+    let dot=0,aa=0,bb=0;
+    for(let j=0;j<32;j++){
+      const x=samples[a+Math.floor(j*(b-a)/32)],y=samples[b+Math.floor(j*(c-b)/32)];
+      dot+=x*y;aa+=x*x;bb+=y*y;
+    }
+    const correlation=dot/Math.sqrt(aa*bb+1e-18);
+    const w=clamp((correlation-.60)/.30,0,1);
+    weights[i]=w*w*(3-2*w);
+  }
+  return weights;
+}
+
 // For pitch-only edits, fit the synthesis cycles between two actual source
 // marks. Both ends then meet the dry signal at the same waveform phase.
 function renderPitchOnly(channels,rate,frames,notes,marks){
   const out=channels.map(ch=>ch.slice()),slow=slowContour(frames);
   const cycles=new Float64Array(marks.length);
+  const voiced=periodicityWeights(vocalChannel(channels),marks);
   let noteIndex=0;
   for(let i=0;i+1<marks.length;i++){
     const t=(marks[i]+marks[i+1])/(2*rate);
     while(noteIndex+1<notes.length&&notes[noteIndex].e<t)noteIndex++;
     const n=notes[noteIndex],k=clamp(Math.round(t/HOP),0,frames.length-1),f=frames[k];
     const shift=f.p&&t>=n.s&&t<=n.e?pitchAdjustment(n,notes[noteIndex+1],f.p,slow[k],t,notes[noteIndex-1]):0;
-    cycles[i]=2**(shift/12);
+    cycles[i]=2**(shift*voiced[i]/12);
   }
   let first=0;
   while(first+1<marks.length){
@@ -121,14 +140,22 @@ function renderPitchOnly(channels,rate,frames,notes,marks){
         while(source+1<end&&accum+cycles[source]<targetPhase){accum+=cycles[source++];}
         const u=clamp((targetPhase-accum)/cycles[source],0,1);
         const target=marks[source]+u*(marks[source+1]-marks[source]);
-        const center=marks[source+(u>.5?1:0)],period=marks[source+1]-marks[source];
+        const period=marks[source+1]-marks[source];
+        const blend=u*u*(3-2*u);
         const radius=Math.max(period,period*total/(count*cycles[source]))*1.25;
         for(let j=Math.max(left,Math.ceil(target-radius));j<Math.min(right,target+radius);j++){
-          const d=j-target,position=clamp(center+d,0,out[0].length-1);
+          const d=j-target,position=clamp(marks[source]+d,0,out[0].length-1);
+          const other=clamp(marks[source+1]+d,0,out[0].length-1);
+          const c=Math.floor(other),e=Math.min(c+1,out[0].length-1);
           const a=Math.floor(position),b=Math.min(a+1,out[0].length-1),mix=position-a;
           const weight=.5+.5*Math.cos(Math.PI*d/radius);
           weights[j-left]+=weight;
-          for(let ch=0;ch<out.length;ch++)sums[ch][j-left]+=weight*(channels[ch][a]+mix*(channels[ch][b]-channels[ch][a]));
+          for(let ch=0;ch<out.length;ch++){
+            const input=channels[ch];
+            const early=input[a]+mix*(input[b]-input[a]);
+            const late=input[c]+(other-c)*(input[e]-input[c]);
+            sums[ch][j-left]+=weight*(early+blend*(late-early));
+          }
         }
       }
       for(let j=left;j<right;j++){
@@ -154,7 +181,7 @@ function renderTrack(channels,rate,frames,notes) {
     return {n,left:Math.max(left,n.s-.055),right:Math.min(right,n.e+.075),
       needPitch:Math.abs(n.pitch)+Math.abs(1-n.mod)+Math.abs(1-n.drift)+Math.abs(n.formant)+Math.abs(n.transition)>1e-6};
   });
-  const slow=slowContour(frames);
+  const slow=slowContour(frames),reliability=periodicityWeights(mono,marks);
   let target=marks[0]||0,idx=0,phase=0,markInterval=0;
   while(target<size+rate*.02) {
     const time=target/rate, src=interpolateMap(map,time,1), source=src*rate;
@@ -162,11 +189,12 @@ function renderTrack(channels,rate,frames,notes) {
     const param=params[idx], n=param.n, active=src>=param.left && src<=param.right;
     const k=clamp(Math.round(src/HOP),0,frames.length-1),f=frames[k];
     const voiced=f.p && src>=n.s && src<=n.e;
-    const shift=active && voiced ? pitchAdjustment(n,notes[idx+1],f.p,slow[k],src,notes[idx-1]):0;
+
     // Advance through measured source cycles. At unity shift this clock
     // lands on the next actual analysis mark instead of accumulating phase error.
     while(markInterval+1<marks.length-1&&marks[markInterval+1]<=source)markInterval++;
     const period=marks[markInterval+1]-marks[markInterval]||rate/(f.p?midiHz(f.p):125);
+    const shift=active&&voiced?reliability[markInterval]*pitchAdjustment(n,notes[idx+1],f.p,slow[k],src,notes[idx-1]):0;
     const cycles=2**(-shift/12);
     const fraction=(source-marks[markInterval])/period+cycles;
     const cycleIndex=clamp(markInterval+Math.floor(fraction),0,Math.max(0,marks.length-2));

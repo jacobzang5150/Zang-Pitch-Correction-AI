@@ -79,6 +79,21 @@ const differences=[];for(let i=1200;i<out.length-1200;i+=120){
     }
     assert.ok(Math.max(...worst)<1,'Boundary dropout at '+sampleRate+' Hz: '+Math.max(...worst).toFixed(2)+' dB');
   }
+  // A pitch detector can hold its last note into a noisy consonant.
+  // The exporter must preserve the consonant even when those frames say voiced.
+  {
+    let noiseSeed=27;
+    const testVowel=Float32Array.from({length:rate},(_,i)=>{
+      if(i<rate*.4 || i>=rate*.6)return .4*Math.sin(2*Math.PI*220*i/rate);
+      noiseSeed=(Math.imul(noiseSeed,1664525)+1013904223)>>>0;
+      return .12*(2*noiseSeed/4294967296-1);
+    });
+    const held=Array.from({length:100},()=>({p:57,c:.99,e:.2,h:0}));
+    const edit={...defaultNote(0,1,57,.99),pitch:.8};
+    const result=renderTrack([testVowel],rate,held,[edit])[0];
+    assert.deepEqual(result.slice(rate*.43,rate*.57),testVowel.slice(rate*.43,rate*.57));
+    assert.ok(Math.abs(analyze(result,rate).frames[20].p-57.8)<.18);
+  }
   const original=make(60.31), {frames,notes}=analyze(original,rate);
   assert.equal(notes.length,2);assert.ok(Math.abs(notes[0].p-60.31)<.09);
   assert.equal(renderTrack([original],rate,frames,notes)[0],original);
