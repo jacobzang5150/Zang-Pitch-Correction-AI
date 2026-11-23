@@ -33,7 +33,7 @@ function estimatePitch(signal, start, rate) {
   const correction=clamp(.5*(lo-hi)/(lo+hi-2*center || 1),-.5,.5);
   return [69+12*Math.log2(rate/(best+correction)/440),1-center];
 }
-function analyze(samples, rate) {
+function analyze(samples, rate, detectPitch=true) {
   const stride=Math.max(1,Math.round(rate/8000)), sr=rate/stride, pad=Math.ceil(sr*.023);
   const low=new Float32Array(Math.ceil(samples.length/stride)+2*pad+8);
   for(let i=0;i<samples.length;i++) low[pad+Math.floor(i/stride)]+=samples[i]/stride;
@@ -47,7 +47,7 @@ function analyze(samples, rate) {
       high+=(samples[i]-(samples[i-1]||0))**2;
     }
     const rms=Math.sqrt(energy/Math.max(1,end-p));
-    const [pitch,conf]=rms>.001 ? estimatePitch(low,Math.round(k*sr*HOP),sr):[0,0];
+    const [pitch,conf]=detectPitch && rms>.001 ? estimatePitch(low,Math.round(k*sr*HOP),sr):[0,0];
     frames.push({p:pitch,c:conf,e:rms,h:Math.sqrt(high/(energy+1e-9))});
   }
   // A short dropout inside a stable voiced span should not split a sustained note.
@@ -96,19 +96,31 @@ function segment(frames,duration) {
   }
   return notes;
 }
-function tuneNotes(notes,root,mode,strength) {
+function tuneNotes(notes,root,mode,strength,guide=null) {
   const modes={major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10],chromatic:[0,1,2,3,4,5,6,7,8,9,10,11]};
   const allowed=modes[mode]||modes.chromatic;
   // Dynamic programming balances measured pitch and melodic movement across adjacent notes.
   const states=notes.map(n=>{
     const targets=[];
+    const chord=guide?harmonyForNote(guide,n):null;
+    if(guide && (n.pitchLocked || !chord || n.confidence<.65)) {
+      if(!n.pitchLocked)n.pitchReview={reason:'Review by ear'};
+      return [{p:n.p+n.pitch,cost:0,prev:0,hold:true}];
+    }
     for(let p=Math.floor(n.p)-2;p<=Math.ceil(n.p)+2;p++) {
-      if(allowed.includes(((p-root)%12+12)%12)) targets.push({p,cost:0,prev:0});
+      const inScale=allowed.includes(((p-root)%12+12)%12);
+      const inChord=chord?.tones.includes((p+120)%12);
+      // Keep a clearly sung extension or passing note eligible, including borrowed tones.
+      const distance=Math.abs(p-n.p);
+      if(chord ? distance<=.85 : inScale) {
+        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale?0:.035) : 0;
+        targets.push({p,cost:0,prev:0,harmonicCost,chord});
+      }
     }
     return targets;
   });
   for(let i=0;i<states.length;i++) for(const s of states[i]) {
-    const local=(s.p-notes[i].p)**2;
+    const local=(s.p-notes[i].p)**2+(s.harmonicCost||0);
     s.cost=local;
     if(!i) continue;
     const choices=states[i-1].map(t=>t.cost+.16*Math.abs((s.p-t.p)-(notes[i].p-notes[i-1].p)));
@@ -118,7 +130,14 @@ function tuneNotes(notes,root,mode,strength) {
   if(!notes.length)return;
   let last=states.at(-1),j=last.indexOf(last.reduce((a,b)=>a.cost<b.cost?a:b));
   for(let i=notes.length-1;i>=0;i--) {
-    const s=states[i][j];notes[i].pitch=(s.p-notes[i].p)*strength;j=s.prev;
+    const s=states[i][j],n=notes[i];
+    if(!s.hold) {
+      const delta=s.p-n.p;
+      n.pitch=guide&&Math.abs(delta)<.08?0:delta*strength;
+      if(guide)n.pitchReview={root:s.chord.root,suffix:s.chord.suffix,target:s.p};
+      else {delete n.pitchReview;delete n.pitchLocked;}
+    }
+    j=s.prev;
   }
 }
 function noteBounds(notes,i,duration) {

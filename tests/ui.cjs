@@ -27,6 +27,25 @@ const {chromium}=require('playwright'),path=require('node:path'),fs=require('nod
     await page.locator('#projectFile').setInputFiles(session);await page.waitForFunction(()=>document.getElementById('status').textContent.includes('restored'));
     assert.equal(await page.evaluate(()=>tracks[0].notes[0].pitch),pitch);
     await page.locator('#audioFiles').setInputFiles(wav);await page.waitForFunction(()=>document.querySelectorAll('.track').length===4);
+    const accompaniment=await page.evaluate(()=>{
+      const rate=12000,ch=Float32Array.from({length:rate},(_,i)=>
+        [48,52,55].reduce((value,p)=>value+.16*Math.sin(2*Math.PI*midiHz(p)*i/rate),0));
+      return Array.from(wavBytes([ch],rate));
+    });
+    await page.locator('#backingFile').setInputFiles({name:'Band.wav',mimeType:'audio/wav',buffer:Buffer.from(accompaniment)});
+    await page.waitForFunction(()=>!busy && chordGuide()?.frames[3]?.root===0);
+    assert.equal(await page.locator('#chordGuide option:checked').textContent(),'Band.wav');
+    await click('tune');
+    assert.equal(await page.evaluate(()=>tracks[0].notes[0].pitchLocked),true);
+    assert.equal(await page.evaluate(()=>tracks[0].notes[0].pitch),pitch);
+    assert.ok(await page.evaluate(()=>tracks[1].notes.some(n=>n.pitchReview?.root===0)));
+    const savedGuide=await file('save','guided.zpitch');
+    await page.locator('#projectFile').setInputFiles(savedGuide);
+    await page.waitForFunction(()=>!busy && document.getElementById('status').textContent.includes('restored'));
+    assert.equal(await page.locator('#chordGuide option:checked').textContent(),'Band.wav');
+    assert.ok(await page.evaluate(()=>chordGuide().frames[3].tones.includes(4)));
+    await page.selectOption('#chordGuide','-1');
+    await page.waitForFunction(()=>!busy && chordGuide()===null);
     assert.deepEqual(errors,[]);
     if(process.env.SCREENSHOT)await page.screenshot({path:process.env.SCREENSHOT});
     console.log('PASS: offline file launch, three-track demo, tuning, guide alignment, mouse editing, undo/redo, A/B playback, original-rate WAV and ZIP export, project recall and WAV import.');

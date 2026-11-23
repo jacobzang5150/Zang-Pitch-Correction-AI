@@ -8,7 +8,7 @@ import zipfile
 root = Path(__file__).resolve().parents[1]
 src = root / "src"
 name = "Zang-Pitch-Correction-AI"
-engine = "\n".join((src / f).read_text() for f in ["boundary-model.js", "analysis.js", "render.js"])
+engine = "\n".join((src / f).read_text() for f in ["boundary-model.js", "analysis.js", "harmony.js", "render.js"])
 ui = "\n".join((src / f).read_text() for f in ["files.js", "app.js", "timeline.js"])
 html = (src / "editor.html").read_text().replace("/* STYLE */", (src / "style.css").read_text())
 html = html.replace("/* ENGINE */", engine).replace("/* APP */", engine + "\n" + ui)
@@ -26,8 +26,8 @@ if parser.parse_args().mac:
         binary.parent.mkdir()
         (resources / editor.name).write_bytes(editor.read_bytes())
         info = dict(CFBundleExecutable="ZangPitch",CFBundleIdentifier="music.zang.pitchcorrection.beta",
-                    CFBundleName="Zang Pitch Correction AI",CFBundlePackageType="APPL",CFBundleVersion="1",
-                    CFBundleShortVersionString="0.1.0",LSMinimumSystemVersion="12.0",
+                    CFBundleName="Zang Pitch Correction AI",CFBundlePackageType="APPL",CFBundleVersion="2",
+                    CFBundleShortVersionString="0.2.0",LSMinimumSystemVersion="12.0",
                     CFBundleInfoDictionaryVersion="6.0",NSHighResolutionCapable=True)
         (contents/"Info.plist").write_bytes(plistlib.dumps(info))
         binary.write_bytes((root/"mac"/"ZangPitch").read_bytes())

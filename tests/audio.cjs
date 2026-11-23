@@ -1,6 +1,6 @@
 // Run from the repository root with node tests/audio.cjs.
 const fs=require('node:fs'), vm=require('node:vm'), assert=require('node:assert/strict');
-const engine=['boundary-model','analysis','render','files'].map(f=>fs.readFileSync('src/'+f+'.js','utf8')).join('\n');
+const engine=['boundary-model','analysis','harmony','render','files'].map(f=>fs.readFileSync('src/'+f+'.js','utf8')).join('\n');
 vm.runInNewContext(engine+`(async()=>{
   const rate=24000,make=(midi,offset=.35)=>{
     const audio=new Float32Array(rate*2);
@@ -33,6 +33,35 @@ vm.runInNewContext(engine+`(async()=>{
   const track={name:'BGV',rate,notes,channels:[original],role:'vocal',tight:.8};
   const loaded=readProject(await projectBlob([track],{bpm:'117'}).arrayBuffer());
   assert.deepEqual(loaded.tracks[0].channels[0],original);assert.deepEqual(loaded.tracks[0].notes,notes);
+  // Same detuned lead twice, over C major and A major (borrowed C-sharp in C major).
+  const backing=Float32Array.from({length:rate*2},(_,i)=>{
+    const chord=i<rate?[48,52,55]:[45,49,52];
+    return chord.reduce((v,p)=>v+.16*Math.sin(2*Math.PI*midiHz(p)*i/rate),0);
+  });
+  const harmony=backingHarmony([backing,backing.map(x=>-x)],rate);
+  assert.equal(harmony.frames[3].root,0);assert.equal(harmony.frames[11].root,9);
+  const ambiguous=make(60.48),lead=analyze(ambiguous,rate);
+  tuneNotes(lead.notes,0,'major',1,harmony);
+  assert.deepEqual(lead.notes.map(n=>n.pitchReview.target),[60,61]);
+  const result=analyze(renderTrack([ambiguous],rate,lead.frames,lead.notes)[0],rate);
+  assert.ok(Math.abs(result.notes[0].p-60)<.1 && Math.abs(result.notes[1].p-61)<.1);
+  const passing=defaultNote(.2,.55,62.06,.96);
+  tuneNotes([passing],0,'major',1,harmony);assert.equal(passing.pitch,0);
+  const muted=backingHarmony([new Float32Array(rate)],rate);
+  assert.ok(muted.frames.every(c=>c===null));
+  const unpitched=defaultNote(.2,.5,60.48,.3);
+  tuneNotes([unpitched],0,'major',1,harmony);assert.equal(unpitched.pitchReview.reason,'Review by ear');
+  const noise=new Float32Array(rate);let seed=123;
+  for(let i=0;i<rate;i++){seed=(1664525*seed+1013904223)>>>0;noise[i]=.2*(seed/2147483648-1);}
+  assert.ok(backingHarmony([noise],rate).frames.every(c=>c===null));
+  const minor=Float32Array.from({length:rate},(_,i)=>[50,53,57].reduce((v,p)=>v+.1*Math.sin(2*Math.PI*midiHz(p)*i/rate),0));
+  const minorChord=backingHarmony([minor],rate).frames[3];assert.equal(minorChord.root,2);assert.equal(minorChord.suffix,'m');
+  const single=make(60);assert.ok(backingHarmony([single],rate).frames.every(c=>c===null));
+  const locked=lead.notes[0];locked.pitchLocked=true;locked.pitch=.19;
+  tuneNotes(lead.notes,0,'major',1,harmony);assert.equal(locked.pitch,.19);
+  const pastEnd=defaultNote(2.2,2.8,60.48,.95);
+  tuneNotes([pastEnd],0,'major',1,harmony);assert.equal(pastEnd.pitch,0);
+  console.log('PASS: backing-chord recognition, chord-dependent rendered lead pitches, passing notes, manual overrides, quiet and ambiguous references.');
   const silence=analyze(new Float32Array(24000),rate);assert.equal(silence.notes.length,0);
   const beat=analyze(original,rate);quantize(beat.notes,2,120,8,.6);assert.ok(beat.notes[0].offset<0);
   for(const n of target.notes)assert.ok(n.e+n.offset+n.length>n.s+n.offset);

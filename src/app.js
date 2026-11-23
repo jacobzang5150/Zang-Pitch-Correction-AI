@@ -6,7 +6,7 @@ const noteName=p=>names[((Math.round(p)%12)+12)%12]+(Math.floor(Math.round(p)/12
 const seconds=t=>Math.floor(t/60)+':'+(t%60).toFixed(2).padStart(5,'0');
 const opt=(name,value)=>new Option(name,value);
 const tracks=[],undoStack=[],redoStack=[];
-let active=0, selected=-1, position=0, original=false,busy=false,dirty=false, projectTitle='Untitled project';
+let chordSource=-1,active=0, selected=-1, position=0, original=false,busy=false,dirty=false, projectTitle='Untitled project';
 let context, playing=false,startClock=0,sources=[],playToken=0, jobSeq=0;
 const workers=new Map();
 const workerCode=$('dsp-source').textContent+`
@@ -15,6 +15,7 @@ onmessage=e=>{
   try {
     let result;
     if(kind==='analyze')result=analyze(...args);
+    if(kind==='harmony')result=backingHarmony(...args);
     if(kind==='render')result=renderTrack(...args);
     if(kind==='align')result=align(...args)||args[1].notes;
     postMessage({id,result},kind==='render'?result.map(ch=>ch.buffer):[]);
@@ -51,7 +52,8 @@ function history(from,to) {
 async function prepare(raw,idx) {
   const t={role:'vocal',mute:false,solo:false,selected:true,visible:true,tight:1,...raw,cache:null};
   status('Analyzing '+t.name+'…');
-  const x=await dsp('analyze',t.channels[0],t.rate);
+  t.pitchAnalyzed=t.role==='vocal'||Boolean(raw.notes?.length);
+  const x=await dsp('analyze',t.channels[0],t.rate,t.pitchAnalyzed);
   t.frames=x.frames;t.slow=slowContour(t.frames);t.notes=raw.notes??x.notes;t.color=colors[idx%colors.length];
   return t;
 }
@@ -102,7 +104,27 @@ function download(blob,filename) {
 }
 function safeName(s){return s.replace(/[\\/:*?"<>|\x00-\x1F]/g,'_').replace(/\.wav$/i,'').trim()||'Vocal';}
 function targets(){const a=tracks.filter(t=>t.selected&&t.role==='vocal');if(!a.length)throw Error('Check at least one vocal track.');return a;}
-function settings(){return Object.fromEntries(['root','scale','strength','timing','bpm','grid','guide','view'].map(id=>[id,$(id).value]));}
+async function useChordGuide(index) {
+  const t=tracks[index];
+  if(t?.role!=='reference'){chordSource=-1;return;}
+  if(!t.harmony){
+    status('Listening to chords in '+t.name+'…');
+    t.harmony=await dsp('harmony',t.channels,t.rate);
+  }
+  chordSource=index;
+  status(t.harmony.frames.some(Boolean)?'Chord guide ready · '+t.name:'No clear chords detected. Vocal notes will be left for review.');
+}
+function chordGuide(){return tracks[chordSource]?.harmony||null;}
+$('chordGuide').onchange=e=>run(async()=>{stop();await useChordGuide(+e.target.value);dirty=true;});
+$('importBacking').onclick=()=>$('backingFile').click();
+$('backingFile').onchange=e=>run(async()=>{
+  try{
+    const file=e.target.files[0];if(!file)return;
+    await addFiles([{name:file.name,role:'reference',selected:false,...decodeWav(await file.arrayBuffer())}]);
+    await useChordGuide(tracks.length-1);
+  }finally{e.target.value='';}
+});
+function settings(){return Object.fromEntries(['root','scale','strength','timing','bpm','grid','guide','view','chordGuide'].map(id=>[id,$(id).value]));}
 async function importWavs(files) {
   const list=[];
   for(const file of files)list.push({name:file.name,...decodeWav(await file.arrayBuffer())});
@@ -113,13 +135,13 @@ $('audioFiles').onchange=e=>run(async()=>{try{await importWavs(e.target.files);}
 $('projectFile').onchange=e=>run(async()=>{
   try{
     const f=e.target.files[0];if(!f||!mayReplace())return;
-    const obj=readProject(await f.arrayBuffer());await addFiles(obj.tracks,true);refresh();
+    const obj=readProject(await f.arrayBuffer());await addFiles(obj.tracks,true);await useChordGuide(Number(obj.settings.chordGuide??-1));refresh();
     for(const [id,v] of Object.entries(obj.settings))if(['root','scale','strength','timing','bpm','grid','guide','view'].includes(id))$(id).value=v;
     title(f.name.replace(/\.zpitch$/i,''));dirty=false;status('Project restored with original audio and editable notes.');
   }finally{e.target.value='';}
 });
 $('newProject').onclick=()=>{
-  if(!mayReplace())return;stop();tracks.length=0;active=0;selected=-1;position=0;
+  if(!mayReplace())return;stop();tracks.length=0;chordSource=-1;active=0;selected=-1;position=0;
   undoStack.length=redoStack.length=0;dirty=false;title('Untitled project');refresh();status('Ready to import stems.');
 };
 $('openProject').onclick=()=>$('projectFile').click();
@@ -138,15 +160,15 @@ $('export').onclick=()=>run(async()=>{
   download(zipStems(files),safeName(projectTitle)+' - stems.zip');status('Exported '+files.length+' time-aligned, 24-bit WAV stems.');
 });
 $('stem').onclick=()=>run(async()=>{const t=current();if(t){download(new Blob([wavBytes(await rendered(t),t.rate)],{type:'audio/wav'}),safeName(t.name)+' - edited.wav');status('Active stem exported.');}});
-$('tune').onclick=()=>run(()=>{const a=targets();remember();for(const t of a){tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100);invalidate(t);}status('Pitch pass applied to '+a.length+' track(s).');});
+$('tune').onclick=()=>run(()=>{const a=targets();remember();for(const t of a){tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100,chordGuide());invalidate(t);}status('Pitch pass applied to '+a.length+' track(s).');});
 $('quant').onclick=()=>run(()=>{const a=targets(),bpm=+$('bpm').value;if(bpm<20||bpm>400)throw Error('Set a tempo between 20 and 400 BPM.');remember();for(const t of a){quantize(t.notes,t.channels[0].length/t.rate,bpm,+$('grid').value,+$('timing').value/100);invalidate(t);}status('Timing pass applied.');});
 $('firstpass').onclick=()=>run(()=>{
   const a=targets(),bpm=+$('bpm').value;
   if(bpm<20||bpm>400)throw Error('Set a tempo between 20 and 400 BPM.');
   remember();
   for(const t of a){
-    tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100);
     quantize(t.notes,t.channels[0].length/t.rate,bpm,+$('grid').value,+$('timing').value/100);
+    tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100,chordGuide());
     invalidate(t);
   }
   status('Pitch and timing pass applied. Click a note to refine it.');

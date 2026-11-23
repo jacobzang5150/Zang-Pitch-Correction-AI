@@ -22,7 +22,9 @@ function adjust(id,value) {
   const left=prev?prev.e+prev.offset+prev.length:0,right=next?next.s+next.offset:t.channels[0].length/t.rate;
   if(id==='offset')value=clamp(value,left-n.s,right-(end-start)-n.s);
   if(id==='length')value=clamp(value,.012-(n.e-n.s),right-start-(n.e-n.s));
-  n[id]=value;invalidate(t);
+  n[id]=value;
+  if(id==='pitch'){n.pitchLocked=true;delete n.pitchReview;}
+  invalidate(t);
 }
 function splitNote(at) {
   const t=current(),n=note();if(!n)return;
@@ -44,12 +46,15 @@ function mergeNext(){
 }
 $('split').onclick=()=>splitNote(position);$('merge').onclick=mergeNext;
 $('hard').onclick=()=>{if(note()){remember();note().hard=!note().hard;invalidate(current());refresh();}};
-$('reset').onclick=()=>{const n=note();if(n){remember();Object.assign(n,defaultNote(n.s,n.e,n.p,n.confidence));applyTiming(current().notes,current().channels[0].length/current().rate,x=>[x.s+x.offset,x.e+x.offset+x.length]);invalidate(current());refresh();}};
+$('keepPitch').onclick=()=>{if(note()){remember();adjust('pitch',0);refresh();}};
+$('reset').onclick=()=>{const n=note();if(n){remember();Object.assign(n,defaultNote(n.s,n.e,n.p,n.confidence));delete n.pitchLocked;delete n.pitchReview;applyTiming(current().notes,current().channels[0].length/current().rate,x=>[x.s+x.offset,x.e+x.offset+x.length]);invalidate(current());refresh();}};
 function trackList(){
   $('tracks').replaceChildren();
+  $('chordGuide').replaceChildren(opt('Key and scale only',-1));
   const guide=$('guide').dataset.pending??$('guide').value;delete $('guide').dataset.pending;$('guide').replaceChildren();
   tracks.forEach((t,i)=>{
     $('guide').add(opt(t.name,i));
+    if(t.role==='reference')$('chordGuide').add(opt(t.name,i));
     const row=document.createElement('div');row.className='track'+(active===i?' active':'');row.style.setProperty('--color',t.color);
     const bar=document.createElement('div');bar.className='trackTop';
     const check=document.createElement('input');check.type='checkbox';check.checked=t.selected;check.setAttribute('aria-label','Include '+t.name+' in correction');check.onchange=()=>{t.selected=check.checked;dirty=true;};
@@ -62,17 +67,34 @@ function trackList(){
     row.append(bar);
     const extra=document.createElement('div');extra.className='trackExtra';
     const role=document.createElement('select');role.setAttribute('aria-label','Role for '+t.name);role.add(opt('Vocal','vocal'));role.add(opt('Reference','reference'));role.value=t.role;
-    role.onchange=()=>{stop();t.role=role.value;selected=-1;invalidate(t);refresh();};extra.append(role);
+    role.onchange=()=>run(async()=>{
+      stop();
+      if(role.value==='vocal'&&!t.pitchAnalyzed){
+        status('Detecting vocal notes in '+t.name+'…');
+        const analysis=await dsp('analyze',t.channels[0],t.rate);
+        t.frames=analysis.frames;t.notes=analysis.notes;t.slow=slowContour(t.frames);t.pitchAnalyzed=true;
+        undoStack.length=redoStack.length=0;
+      }
+      t.role=role.value;
+      if(i===chordSource&&t.role!=='reference')chordSource=-1;
+      selected=-1;invalidate(t);
+    });extra.append(role);
     const label=document.createElement('label'),range=document.createElement('input');label.textContent='Tightness ';range.type='range';range.min=0;range.max=100;range.value=Math.round(t.tight*100);
     range.title=range.value+'%';range.oninput=()=>{t.tight=+range.value/100;range.title=range.value+'%';dirty=true;};label.append(range);extra.append(label);row.append(extra);$('tracks').append(row);
   });
+  $('chordGuide').value=String(chordSource);
   if(tracks[+guide])$('guide').value=String(+guide);
 }
 function inspector() {
   const n=note(),can=!!n&&current().role==='vocal';
   $('noteLabel').textContent=can?noteName(n.p+n.pitch)+' · '+Math.round((n.e-n.s+n.length)*1000)+' ms':'Select a vocal note';
+  if(can && n.pitchLocked)$('noteLabel').textContent+=' · Manual pitch';
+  else if(can && n.pitchReview){
+    const review=n.pitchReview;
+    $('noteLabel').textContent+=' · '+(review.reason||'Chord '+names[review.root]+review.suffix+' → '+noteName(review.target));
+  }
   for(const [id,,, ,step,factor=1] of controls){const input=spans.get(id);input.disabled=!can;input.value=can?Number((n[id]*factor).toFixed(step<1?2:0)):'';}
-  for(const id of ['reset','hard','split'])$(id).disabled=!can;
+  for(const id of ['reset','hard','split','keepPitch'])$(id).disabled=!can;
   $('merge').disabled=!can||selected===current()?.notes.length-1;$('hard').textContent=n?.hard?'Hard boundary':'Soft boundary';
 }
 function refresh(){
@@ -82,7 +104,7 @@ function refresh(){
   $('strengthOut').textContent=$('strength').value+'%';$('timeOut').textContent=$('timing').value+'%';draw();
 }
 function draw(){
-  const total=duration()||8,width=Math.max(260,$('timeline').clientWidth-2),left=52,top=29;
+  const total=duration()||8,width=Math.max(260,$('timeline').clientWidth-2),left=52,top=chordGuide()?51:29;
   const visible=tracks.map((t,i)=>({t,i})).filter(x=>x.t.visible);
   const overlay=$('view').value==='overlay', rows=overlay?1:Math.max(1,visible.length);
   const h=overlay?310:Math.max(110,Math.min(230,320/rows)), height=Math.max(252,top+rows*h);
@@ -96,6 +118,19 @@ function draw(){
   ctx.font='10px monospace';ctx.lineWidth=1;
   for(let t=Math.ceil(origin/step)*step;t<=origin+span+.0001;t+=step){
     ctx.fillStyle='#a4afaa';ctx.fillText(seconds(t),x(t)+3,16);ctx.strokeStyle='#2e3837';ctx.beginPath();ctx.moveTo(x(t),top);ctx.lineTo(x(t),height);ctx.stroke();
+  }
+  const harmony=chordGuide();
+  if(harmony){
+    ctx.fillStyle='#99c8b2';ctx.fillText('CHORD',5,38);
+    let previous=null, nextLabel=left;
+    for(let i=Math.floor(origin/CHORD_HOP);i<harmony.frames.length&&i*CHORD_HOP<origin+span;i++){
+      const chord=harmony.frames[i], name=chord?names[chord.root]+chord.suffix:'—';
+      const xx=Math.max(left,x(i*CHORD_HOP));
+      if(name!==previous && xx>=nextLabel){
+        ctx.fillText(name,xx+3,38);nextLabel=xx+ctx.measureText(name).width+7;
+      }
+      previous=name;
+    }
   }
   const pitchRange=members=>{
     let lo=Infinity,hi=-Infinity;

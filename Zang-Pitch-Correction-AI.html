@@ -2,11 +2,11 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Zang Pitch Correction AI</title>
 <style>:root{color-scheme:dark;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e8ebe9;background:#141819;--line:#353c3c;--muted:#9ca6a3;--amber:#f6be6b;--mint:#8ad6b6}*{box-sizing:border-box}body{margin:0}header,.section,.editHead,.toolbar,.transport,.actions,.pair,nav,.brand,.pan{display:flex;align-items:center;gap:12px}header{height:78px;background:#1b2021;border-bottom:1px solid var(--line);justify-content:space-between;padding:0 26px}.brand{gap:13px}h1,h2,h3,p{margin:0}h1{font-size:21px;letter-spacing:-.7px}h1 span{font-weight:460}.mark{width:42px;height:42px;display:grid;place-content:center;border:1px solid #bb995c;color:var(--amber);font:700 40px/1 Georgia;border-radius:10px}.brand small,main small{font:600 10px/1.9 monospace;letter-spacing:1.7px;color:var(--muted)}button,select,input[type=number]{font:inherit;color:inherit;background:#272d2e;border:1px solid #3e4847;border-radius:6px;padding:7px 10px;font-size:12px}button{cursor:pointer;white-space:nowrap;font-weight:550}button:hover,select:hover{border-color:#83958c;background:#303938}button:disabled{opacity:.4;cursor:default}button.accent{background:var(--amber);color:#272114;border-color:#d3a05b}button.teal{background:#263d35;color:#b4e7ce;border-color:#456556}input[type=range],input[type=checkbox]{accent-color:var(--mint)}input[type=range]{height:13px}.layout{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:calc(100vh - 78px)}aside{background:#1b2021;border-right:1px solid var(--line);padding:20px 16px}h2{font-size:16px;letter-spacing:-.4px}.section,.editHead{justify-content:space-between}.section span,output,#duration{color:var(--muted);font:12px monospace}.full{width:100%;margin-top:11px}.panel{border-top:1px solid var(--line);padding-top:18px;margin-top:18px}.panel h3{font-size:13px;margin:18px 0 2px}.panel label,.pair label{display:block;font-size:12px;color:#bac4c0;margin-top:10px}.pair label{flex:1;min-width:0}.panel select,.panel input{display:block;width:100%;margin-top:7px}.panel output{float:right}.track{padding:10px 8px 8px;border-left:3px solid var(--color);margin-top:8px;border-radius:3px;background:#23292a}.track.active{background:#303735}.trackTop{display:flex;align-items:center;gap:5px}.trackName{overflow:hidden;text-overflow:ellipsis;text-align:left;flex:1;background:none;border:none;padding:3px}.mini{padding:3px 5px;font:11px monospace}.on{background:#41594e;color:#ccf6df}.trackExtra{display:flex;gap:6px;align-items:center;margin-top:6px}.trackExtra select{padding:4px 2px;font-size:10px}.trackExtra label{font:10px monospace;color:var(--muted)}.trackExtra input{width:58px}main{min-width:0;padding:22px 25px}.editHead h2{font-size:25px;letter-spacing:-1px}.toolbar{margin:18px 0 10px;flex-wrap:wrap}.toolbar label,.pan{font-size:11px;color:var(--muted)}.toolbar select{margin-left:5px}.zoom{display:flex;align-items:center;gap:7px;margin-left:auto}.zoom input{width:78px}#timeline{background:#181e1f;border:1px solid var(--line);border-radius:8px;position:relative;overflow:auto;max-height:58vh;min-height:250px}canvas{display:block;touch-action:none}#empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:15px;text-align:center;background:#192021d9}#empty[hidden]{display:none}.wave{font:46px/1 Georgia;color:var(--mint)}#empty p{color:var(--muted);font-size:13px}.pan{margin-top:7px}.pan input{flex:1}.transport{padding:12px 0;border-bottom:1px solid var(--line)}.transport strong{font:16px monospace;color:var(--amber)}#duration{margin-left:auto}#inspector{padding-top:16px}#fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px;margin-top:12px}#fields label{font-size:11px;color:#abb7b1;display:flex;flex-direction:column;gap:4px}#fields input{width:100%}.actions{flex-wrap:wrap;gap:6px;margin:12px 0}.actions button{font-size:11px}footer{padding-top:10px;font-size:12px;color:var(--mint);min-height:30px}body.working{cursor:progress}body.working main,body.working aside,body.working nav{pointer-events:none;opacity:.78}.error{color:#ffac95}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}@media(max-width:900px){.layout{grid-template-columns:215px minmax(0,1fr)}main{padding:14px}header{padding:0 14px}.toolbar{gap:5px}.editHead h2{font-size:19px}}@media(max-width:640px){header{height:auto;padding:12px;align-items:flex-start;gap:10px;flex-wrap:wrap}.layout{display:flex;flex-direction:column}.layout main{order:-1}aside{border-top:1px solid var(--line)}.transport{flex-wrap:wrap}nav{gap:5px}}
 </style></head><body>
-<header><div class="brand"><b class="mark" aria-hidden="true">∿</b><div><h1>Zang <span>Pitch Correction</span></h1><small>STANDALONE BETA · 0.1</small></div></div>
+<header><div class="brand"><b class="mark" aria-hidden="true">∿</b><div><h1>Zang <span>Pitch Correction</span></h1><small>STANDALONE BETA · 0.2</small></div></div>
 <nav><button id="newProject">New</button><button id="openProject">Open project</button><button id="save">Save project</button><button id="export" class="accent">Export stems ↗</button></nav></header>
 <div class="layout"><aside><div class="section"><h2>Tracks</h2><span id="trackCount">0</span></div>
-<button id="import" class="full">＋ Import WAVs</button><div id="tracks"></div>
-<div class="panel"><h2>First pass</h2><div class="pair"><label>Key<select id="root"></select></label><label>Scale<select id="scale"><option value="chromatic">Chromatic</option><option value="major">Major</option><option value="minor">Minor</option></select></label></div>
+<button id="import" class="full">＋ Import WAVs</button><button id="importBacking" class="full">Import backing WAV</button><div id="tracks"></div>
+<div class="panel"><h2>First pass</h2><label>Chord guide<select id="chordGuide"><option value="-1">Key and scale only</option></select></label><div class="pair"><label>Key<select id="root"></select></label><label>Scale<select id="scale"><option value="chromatic">Chromatic</option><option value="major">Major</option><option value="minor">Minor</option></select></label></div>
 <label>Pitch strength <output id="strengthOut">85%</output><input type="range" id="strength" min="0" max="100" value="85"></label><button id="tune" class="full teal">Tune checked tracks</button>
 <h3>Timing</h3><div class="pair"><label>Tempo<input type="number" id="bpm" min="20" max="400" value="120"></label><label>Grid<select id="grid"><option value="4">1/4</option><option value="8" selected>1/8</option><option value="16">1/16</option><option value="12">1/8 triplet</option></select></label></div>
 <label>Timing strength <output id="timeOut">65%</output><input type="range" id="timing" min="0" max="100" value="65"></label><button id="quant" class="full">Correct to grid</button><button id="firstpass" class="full teal">Tune + correct timing</button>
@@ -16,9 +16,9 @@
 <div id="timeline"><canvas id="canvas" aria-label="Vocal pitch timeline"></canvas><div id="empty"><div class="wave" aria-hidden="true">∿</div><h2>Drop your vocal stems here</h2><p>Import WAVs with the same start time, or try a three-part demo.</p><button id="demo">Load demo stack</button></div></div>
 <label class="pan">Timeline position <input id="pan" type="range" min="0" max="1000" value="0"></label>
 <div class="transport"><button id="play" class="accent">▶ Play</button><button id="rewind" title="Return to start">↤</button><strong id="clock">0:00.00</strong><button id="ab" aria-pressed="false">Listen: Edited</button><span id="duration"></span></div>
-<div id="inspector"><div class="section"><h2>Note inspector</h2><span id="noteLabel">Select a note</span></div><div id="fields"></div><div class="actions"><button id="split">Split at cursor</button><button id="merge">Merge next</button><button id="hard">Soft boundary</button><button id="reset">Reset note</button><button id="stem">Export active WAV</button></div></div>
+<div id="inspector"><div class="section"><h2>Note inspector</h2><span id="noteLabel">Select a note</span></div><div id="fields"></div><div class="actions"><button id="split">Split at cursor</button><button id="merge">Merge next</button><button id="hard">Soft boundary</button><button id="keepPitch">Keep original pitch</button><button id="reset">Reset note</button><button id="stem">Export active WAV</button></div></div>
 <footer role="status" id="status">Ready</footer></main></div>
-<input type="file" id="audioFiles" multiple accept=".wav,.wave,audio/wav" hidden><input type="file" id="projectFile" accept=".zpitch" hidden>
+<input type="file" id="backingFile" accept=".wav,.wave,audio/wav" hidden><input type="file" id="audioFiles" multiple accept=".wav,.wave,audio/wav" hidden><input type="file" id="projectFile" accept=".zpitch" hidden>
 <script id="dsp-source" type="text/plain">const BOUNDARY_MODEL = {"bias": -8.6979559, "weights": [-4.1917679, 13.8689682, 15.5972018, -0.7072173]};
 
 const HOP = .01;
@@ -56,7 +56,7 @@ function estimatePitch(signal, start, rate) {
   const correction=clamp(.5*(lo-hi)/(lo+hi-2*center || 1),-.5,.5);
   return [69+12*Math.log2(rate/(best+correction)/440),1-center];
 }
-function analyze(samples, rate) {
+function analyze(samples, rate, detectPitch=true) {
   const stride=Math.max(1,Math.round(rate/8000)), sr=rate/stride, pad=Math.ceil(sr*.023);
   const low=new Float32Array(Math.ceil(samples.length/stride)+2*pad+8);
   for(let i=0;i<samples.length;i++) low[pad+Math.floor(i/stride)]+=samples[i]/stride;
@@ -70,7 +70,7 @@ function analyze(samples, rate) {
       high+=(samples[i]-(samples[i-1]||0))**2;
     }
     const rms=Math.sqrt(energy/Math.max(1,end-p));
-    const [pitch,conf]=rms>.001 ? estimatePitch(low,Math.round(k*sr*HOP),sr):[0,0];
+    const [pitch,conf]=detectPitch && rms>.001 ? estimatePitch(low,Math.round(k*sr*HOP),sr):[0,0];
     frames.push({p:pitch,c:conf,e:rms,h:Math.sqrt(high/(energy+1e-9))});
   }
   // A short dropout inside a stable voiced span should not split a sustained note.
@@ -119,19 +119,31 @@ function segment(frames,duration) {
   }
   return notes;
 }
-function tuneNotes(notes,root,mode,strength) {
+function tuneNotes(notes,root,mode,strength,guide=null) {
   const modes={major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10],chromatic:[0,1,2,3,4,5,6,7,8,9,10,11]};
   const allowed=modes[mode]||modes.chromatic;
   // Dynamic programming balances measured pitch and melodic movement across adjacent notes.
   const states=notes.map(n=>{
     const targets=[];
+    const chord=guide?harmonyForNote(guide,n):null;
+    if(guide && (n.pitchLocked || !chord || n.confidence<.65)) {
+      if(!n.pitchLocked)n.pitchReview={reason:'Review by ear'};
+      return [{p:n.p+n.pitch,cost:0,prev:0,hold:true}];
+    }
     for(let p=Math.floor(n.p)-2;p<=Math.ceil(n.p)+2;p++) {
-      if(allowed.includes(((p-root)%12+12)%12)) targets.push({p,cost:0,prev:0});
+      const inScale=allowed.includes(((p-root)%12+12)%12);
+      const inChord=chord?.tones.includes((p+120)%12);
+      // Keep a clearly sung extension or passing note eligible, including borrowed tones.
+      const distance=Math.abs(p-n.p);
+      if(chord ? distance<=.85 : inScale) {
+        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale?0:.035) : 0;
+        targets.push({p,cost:0,prev:0,harmonicCost,chord});
+      }
     }
     return targets;
   });
   for(let i=0;i<states.length;i++) for(const s of states[i]) {
-    const local=(s.p-notes[i].p)**2;
+    const local=(s.p-notes[i].p)**2+(s.harmonicCost||0);
     s.cost=local;
     if(!i) continue;
     const choices=states[i-1].map(t=>t.cost+.16*Math.abs((s.p-t.p)-(notes[i].p-notes[i-1].p)));
@@ -141,7 +153,14 @@ function tuneNotes(notes,root,mode,strength) {
   if(!notes.length)return;
   let last=states.at(-1),j=last.indexOf(last.reduce((a,b)=>a.cost<b.cost?a:b));
   for(let i=notes.length-1;i>=0;i--) {
-    const s=states[i][j];notes[i].pitch=(s.p-notes[i].p)*strength;j=s.prev;
+    const s=states[i][j],n=notes[i];
+    if(!s.hold) {
+      const delta=s.p-n.p;
+      n.pitch=guide&&Math.abs(delta)<.08?0:delta*strength;
+      if(guide)n.pitchReview={root:s.chord.root,suffix:s.chord.suffix,target:s.p};
+      else {delete n.pitchReview;delete n.pitchLocked;}
+    }
+    j=s.prev;
   }
 }
 function noteBounds(notes,i,duration) {
@@ -216,6 +235,106 @@ function align(guideTrack,target,duration,strength) {
     return sec+strength*clamp(mapped-sec,-.7,.7);
   }
   applyTiming(target.notes,duration,n=>[dest(n.s),dest(n.e)]);
+}
+
+// Local chord recognition. Analyze spectral peaks in each stereo channel before
+// combining pitch classes so panned or phase-inverted instruments remain audible.
+const CHORD_HOP = .125;
+const chordShapes = [
+  {suffix:'', tones:[0,4,7]}, {suffix:'m', tones:[0,3,7]},
+  {suffix:'dim', tones:[0,3,6]}
+];
+
+function magnitudeSpectrum(signal, offset, window, real, imag, magnitude) {
+  const n=window.length;
+  for(let i=0,j=0;i<n;i++) {
+    real[j]=(signal[offset+i]||0)*window[i];
+    imag[j]=0;
+    let bit=n>>1;
+    while(bit && (j&bit)){j^=bit;bit>>=1;}
+    j^=bit;
+  }
+  for(let size=2;size<=n;size*=2) {
+    const half=size/2, angle=-2*Math.PI/size, cos=Math.cos(angle), sin=Math.sin(angle);
+    for(let block=0;block<n;block+=size) {
+      let cr=1,ci=0;
+      for(let k=block;k<block+half;k++) {
+        const j=k+half, r=real[j]*cr-imag[j]*ci, im=real[j]*ci+imag[j]*cr;
+        real[j]=real[k]-r;imag[j]=imag[k]-im;
+        real[k]+=r;imag[k]+=im;
+        const next=cr*cos-ci*sin;ci=ci*cos+cr*sin;cr=next;
+      }
+    }
+  }
+  for(let k=0;k<magnitude.length;k++)magnitude[k]=Math.hypot(real[k],imag[k]);
+}
+
+function identifyChord(chroma) {
+  const total=chroma.reduce((a,b)=>a+b,0);
+  if(total<.05)return null;
+  let best=null,second=0;
+  for(let root=0;root<12;root++)for(const shape of chordShapes) {
+    const tones=shape.tones.map(interval=>(root+interval)%12);
+    const weights=tones.map(pc=>chroma[pc]/total);
+    // A strong fifth by itself cannot distinguish major and minor.
+    const score=weights.reduce((a,b)=>a+b,0)+.35*Math.min(...weights);
+    if(!best||score>best.score) {
+      second=best?.score||0;best={root,suffix:shape.suffix,tones,score,weakest:Math.min(...weights)};
+    }else second=Math.max(second,score);
+  }
+  if(best.score<.66 || best.weakest<.075 || best.score-second<.065)return null;
+  const confidence=clamp((best.score-second)/.23,0,1);
+  return {root:best.root,suffix:best.suffix,tones:best.tones,confidence};
+}
+
+function backingHarmony(channels, rate) {
+  const n=2048,stride=Math.max(1,Math.round(rate/8000)),sr=rate/stride;
+  const down=channels.map(channel=>{
+    const low=new Float32Array(Math.ceil(channel.length/stride));
+    for(let i=0;i<channel.length;i++)low[Math.floor(i/stride)]+=channel[i]/stride;
+    return low;
+  });
+  const duration=channels[0].length/rate,window=Float64Array.from({length:n},(_,i)=>.5-.5*Math.cos(2*Math.PI*i/(n-1)));
+  const real=new Float64Array(n),imag=new Float64Array(n),mag=new Float64Array(n/2);
+  const frames=[];
+  for(let frame=0;frame*CHORD_HOP<duration;frame++) {
+    const offset=Math.round((frame+.5)*CHORD_HOP*sr)-n/2,chroma=new Float64Array(12);
+    for(const signal of down) {
+      magnitudeSpectrum(signal,offset,window,real,imag,mag);
+      let peak=0;
+      const end=Math.min(mag.length-1,Math.ceil(2300*n/sr));
+      for(let k=2;k<end;k++)peak=Math.max(peak,mag[k]);
+      if(peak<.06)continue;
+      for(let k=Math.max(2,Math.floor(60*n/sr));k<end;k++){
+        const l=mag[k-1],m=mag[k],r=mag[k+1];
+        if(m<l||m<=r||m<peak*.065)continue;
+        const delta=clamp(.5*(l-r)/(l+r-2*m||1),-.5,.5);
+        const hz=(k+delta)*sr/n,p=69+12*Math.log2(hz/440),key=Math.round(p);
+        const closeness=1-Math.min(1,Math.abs(p-key)*1.6);
+        chroma[(key+120)%12]+=m*closeness/Math.max(1,hz/800);
+      }
+    }
+    frames.push(identifyChord(chroma));
+  }
+  // Drop isolated estimates, including ones straddling an actual chord change.
+  const same=(a,b)=>a&&b&&a.root===b.root&&a.suffix===b.suffix;
+  const stable=frames.map((c,i)=>same(c,frames[i-1])||same(c,frames[i+1])?c:null);
+  return {frames:stable,duration};
+}
+
+function harmonyForNote(guide,n) {
+  const start=n.s+n.offset,end=n.e+n.offset+n.length, votes=new Map();
+  for(let i=Math.max(0,Math.floor(start/CHORD_HOP));i<guide.frames.length&&i*CHORD_HOP<end;i++){
+    const chord=guide.frames[i];
+    if(!chord)continue;
+    const overlap=Math.min(end,(i+1)*CHORD_HOP,guide.duration)-Math.max(start,i*CHORD_HOP);
+    const key=chord.root+chord.suffix, vote=votes.get(key)||{chord,weight:0,coverage:0};
+    vote.weight+=overlap*chord.confidence;vote.coverage+=overlap;votes.set(key,vote);
+  }
+  let best=null;
+  for(const v of votes.values())if(!best||v.weight>best.weight)best=v;
+  if(!best||best.coverage<(end-start)*.58||best.weight<(end-start)*.42)return null;
+  return {...best.chord,confidence:best.weight/(end-start)};
 }
 
 function timeMap(notes,duration) {
@@ -377,7 +496,7 @@ function estimatePitch(signal, start, rate) {
   const correction=clamp(.5*(lo-hi)/(lo+hi-2*center || 1),-.5,.5);
   return [69+12*Math.log2(rate/(best+correction)/440),1-center];
 }
-function analyze(samples, rate) {
+function analyze(samples, rate, detectPitch=true) {
   const stride=Math.max(1,Math.round(rate/8000)), sr=rate/stride, pad=Math.ceil(sr*.023);
   const low=new Float32Array(Math.ceil(samples.length/stride)+2*pad+8);
   for(let i=0;i<samples.length;i++) low[pad+Math.floor(i/stride)]+=samples[i]/stride;
@@ -391,7 +510,7 @@ function analyze(samples, rate) {
       high+=(samples[i]-(samples[i-1]||0))**2;
     }
     const rms=Math.sqrt(energy/Math.max(1,end-p));
-    const [pitch,conf]=rms>.001 ? estimatePitch(low,Math.round(k*sr*HOP),sr):[0,0];
+    const [pitch,conf]=detectPitch && rms>.001 ? estimatePitch(low,Math.round(k*sr*HOP),sr):[0,0];
     frames.push({p:pitch,c:conf,e:rms,h:Math.sqrt(high/(energy+1e-9))});
   }
   // A short dropout inside a stable voiced span should not split a sustained note.
@@ -440,19 +559,31 @@ function segment(frames,duration) {
   }
   return notes;
 }
-function tuneNotes(notes,root,mode,strength) {
+function tuneNotes(notes,root,mode,strength,guide=null) {
   const modes={major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10],chromatic:[0,1,2,3,4,5,6,7,8,9,10,11]};
   const allowed=modes[mode]||modes.chromatic;
   // Dynamic programming balances measured pitch and melodic movement across adjacent notes.
   const states=notes.map(n=>{
     const targets=[];
+    const chord=guide?harmonyForNote(guide,n):null;
+    if(guide && (n.pitchLocked || !chord || n.confidence<.65)) {
+      if(!n.pitchLocked)n.pitchReview={reason:'Review by ear'};
+      return [{p:n.p+n.pitch,cost:0,prev:0,hold:true}];
+    }
     for(let p=Math.floor(n.p)-2;p<=Math.ceil(n.p)+2;p++) {
-      if(allowed.includes(((p-root)%12+12)%12)) targets.push({p,cost:0,prev:0});
+      const inScale=allowed.includes(((p-root)%12+12)%12);
+      const inChord=chord?.tones.includes((p+120)%12);
+      // Keep a clearly sung extension or passing note eligible, including borrowed tones.
+      const distance=Math.abs(p-n.p);
+      if(chord ? distance<=.85 : inScale) {
+        const harmonicCost=chord ? (inChord?0:.58*chord.confidence)+(inScale?0:.035) : 0;
+        targets.push({p,cost:0,prev:0,harmonicCost,chord});
+      }
     }
     return targets;
   });
   for(let i=0;i<states.length;i++) for(const s of states[i]) {
-    const local=(s.p-notes[i].p)**2;
+    const local=(s.p-notes[i].p)**2+(s.harmonicCost||0);
     s.cost=local;
     if(!i) continue;
     const choices=states[i-1].map(t=>t.cost+.16*Math.abs((s.p-t.p)-(notes[i].p-notes[i-1].p)));
@@ -462,7 +593,14 @@ function tuneNotes(notes,root,mode,strength) {
   if(!notes.length)return;
   let last=states.at(-1),j=last.indexOf(last.reduce((a,b)=>a.cost<b.cost?a:b));
   for(let i=notes.length-1;i>=0;i--) {
-    const s=states[i][j];notes[i].pitch=(s.p-notes[i].p)*strength;j=s.prev;
+    const s=states[i][j],n=notes[i];
+    if(!s.hold) {
+      const delta=s.p-n.p;
+      n.pitch=guide&&Math.abs(delta)<.08?0:delta*strength;
+      if(guide)n.pitchReview={root:s.chord.root,suffix:s.chord.suffix,target:s.p};
+      else {delete n.pitchReview;delete n.pitchLocked;}
+    }
+    j=s.prev;
   }
 }
 function noteBounds(notes,i,duration) {
@@ -537,6 +675,106 @@ function align(guideTrack,target,duration,strength) {
     return sec+strength*clamp(mapped-sec,-.7,.7);
   }
   applyTiming(target.notes,duration,n=>[dest(n.s),dest(n.e)]);
+}
+
+// Local chord recognition. Analyze spectral peaks in each stereo channel before
+// combining pitch classes so panned or phase-inverted instruments remain audible.
+const CHORD_HOP = .125;
+const chordShapes = [
+  {suffix:'', tones:[0,4,7]}, {suffix:'m', tones:[0,3,7]},
+  {suffix:'dim', tones:[0,3,6]}
+];
+
+function magnitudeSpectrum(signal, offset, window, real, imag, magnitude) {
+  const n=window.length;
+  for(let i=0,j=0;i<n;i++) {
+    real[j]=(signal[offset+i]||0)*window[i];
+    imag[j]=0;
+    let bit=n>>1;
+    while(bit && (j&bit)){j^=bit;bit>>=1;}
+    j^=bit;
+  }
+  for(let size=2;size<=n;size*=2) {
+    const half=size/2, angle=-2*Math.PI/size, cos=Math.cos(angle), sin=Math.sin(angle);
+    for(let block=0;block<n;block+=size) {
+      let cr=1,ci=0;
+      for(let k=block;k<block+half;k++) {
+        const j=k+half, r=real[j]*cr-imag[j]*ci, im=real[j]*ci+imag[j]*cr;
+        real[j]=real[k]-r;imag[j]=imag[k]-im;
+        real[k]+=r;imag[k]+=im;
+        const next=cr*cos-ci*sin;ci=ci*cos+cr*sin;cr=next;
+      }
+    }
+  }
+  for(let k=0;k<magnitude.length;k++)magnitude[k]=Math.hypot(real[k],imag[k]);
+}
+
+function identifyChord(chroma) {
+  const total=chroma.reduce((a,b)=>a+b,0);
+  if(total<.05)return null;
+  let best=null,second=0;
+  for(let root=0;root<12;root++)for(const shape of chordShapes) {
+    const tones=shape.tones.map(interval=>(root+interval)%12);
+    const weights=tones.map(pc=>chroma[pc]/total);
+    // A strong fifth by itself cannot distinguish major and minor.
+    const score=weights.reduce((a,b)=>a+b,0)+.35*Math.min(...weights);
+    if(!best||score>best.score) {
+      second=best?.score||0;best={root,suffix:shape.suffix,tones,score,weakest:Math.min(...weights)};
+    }else second=Math.max(second,score);
+  }
+  if(best.score<.66 || best.weakest<.075 || best.score-second<.065)return null;
+  const confidence=clamp((best.score-second)/.23,0,1);
+  return {root:best.root,suffix:best.suffix,tones:best.tones,confidence};
+}
+
+function backingHarmony(channels, rate) {
+  const n=2048,stride=Math.max(1,Math.round(rate/8000)),sr=rate/stride;
+  const down=channels.map(channel=>{
+    const low=new Float32Array(Math.ceil(channel.length/stride));
+    for(let i=0;i<channel.length;i++)low[Math.floor(i/stride)]+=channel[i]/stride;
+    return low;
+  });
+  const duration=channels[0].length/rate,window=Float64Array.from({length:n},(_,i)=>.5-.5*Math.cos(2*Math.PI*i/(n-1)));
+  const real=new Float64Array(n),imag=new Float64Array(n),mag=new Float64Array(n/2);
+  const frames=[];
+  for(let frame=0;frame*CHORD_HOP<duration;frame++) {
+    const offset=Math.round((frame+.5)*CHORD_HOP*sr)-n/2,chroma=new Float64Array(12);
+    for(const signal of down) {
+      magnitudeSpectrum(signal,offset,window,real,imag,mag);
+      let peak=0;
+      const end=Math.min(mag.length-1,Math.ceil(2300*n/sr));
+      for(let k=2;k<end;k++)peak=Math.max(peak,mag[k]);
+      if(peak<.06)continue;
+      for(let k=Math.max(2,Math.floor(60*n/sr));k<end;k++){
+        const l=mag[k-1],m=mag[k],r=mag[k+1];
+        if(m<l||m<=r||m<peak*.065)continue;
+        const delta=clamp(.5*(l-r)/(l+r-2*m||1),-.5,.5);
+        const hz=(k+delta)*sr/n,p=69+12*Math.log2(hz/440),key=Math.round(p);
+        const closeness=1-Math.min(1,Math.abs(p-key)*1.6);
+        chroma[(key+120)%12]+=m*closeness/Math.max(1,hz/800);
+      }
+    }
+    frames.push(identifyChord(chroma));
+  }
+  // Drop isolated estimates, including ones straddling an actual chord change.
+  const same=(a,b)=>a&&b&&a.root===b.root&&a.suffix===b.suffix;
+  const stable=frames.map((c,i)=>same(c,frames[i-1])||same(c,frames[i+1])?c:null);
+  return {frames:stable,duration};
+}
+
+function harmonyForNote(guide,n) {
+  const start=n.s+n.offset,end=n.e+n.offset+n.length, votes=new Map();
+  for(let i=Math.max(0,Math.floor(start/CHORD_HOP));i<guide.frames.length&&i*CHORD_HOP<end;i++){
+    const chord=guide.frames[i];
+    if(!chord)continue;
+    const overlap=Math.min(end,(i+1)*CHORD_HOP,guide.duration)-Math.max(start,i*CHORD_HOP);
+    const key=chord.root+chord.suffix, vote=votes.get(key)||{chord,weight:0,coverage:0};
+    vote.weight+=overlap*chord.confidence;vote.coverage+=overlap;votes.set(key,vote);
+  }
+  let best=null;
+  for(const v of votes.values())if(!best||v.weight>best.weight)best=v;
+  if(!best||best.coverage<(end-start)*.58||best.weight<(end-start)*.42)return null;
+  return {...best.chord,confidence:best.weight/(end-start)};
 }
 
 function timeMap(notes,duration) {
@@ -792,7 +1030,7 @@ const noteName=p=>names[((Math.round(p)%12)+12)%12]+(Math.floor(Math.round(p)/12
 const seconds=t=>Math.floor(t/60)+':'+(t%60).toFixed(2).padStart(5,'0');
 const opt=(name,value)=>new Option(name,value);
 const tracks=[],undoStack=[],redoStack=[];
-let active=0, selected=-1, position=0, original=false,busy=false,dirty=false, projectTitle='Untitled project';
+let chordSource=-1,active=0, selected=-1, position=0, original=false,busy=false,dirty=false, projectTitle='Untitled project';
 let context, playing=false,startClock=0,sources=[],playToken=0, jobSeq=0;
 const workers=new Map();
 const workerCode=$('dsp-source').textContent+`
@@ -801,6 +1039,7 @@ onmessage=e=>{
   try {
     let result;
     if(kind==='analyze')result=analyze(...args);
+    if(kind==='harmony')result=backingHarmony(...args);
     if(kind==='render')result=renderTrack(...args);
     if(kind==='align')result=align(...args)||args[1].notes;
     postMessage({id,result},kind==='render'?result.map(ch=>ch.buffer):[]);
@@ -837,7 +1076,8 @@ function history(from,to) {
 async function prepare(raw,idx) {
   const t={role:'vocal',mute:false,solo:false,selected:true,visible:true,tight:1,...raw,cache:null};
   status('Analyzing '+t.name+'…');
-  const x=await dsp('analyze',t.channels[0],t.rate);
+  t.pitchAnalyzed=t.role==='vocal'||Boolean(raw.notes?.length);
+  const x=await dsp('analyze',t.channels[0],t.rate,t.pitchAnalyzed);
   t.frames=x.frames;t.slow=slowContour(t.frames);t.notes=raw.notes??x.notes;t.color=colors[idx%colors.length];
   return t;
 }
@@ -888,7 +1128,27 @@ function download(blob,filename) {
 }
 function safeName(s){return s.replace(/[\\/:*?"<>|\x00-\x1F]/g,'_').replace(/\.wav$/i,'').trim()||'Vocal';}
 function targets(){const a=tracks.filter(t=>t.selected&&t.role==='vocal');if(!a.length)throw Error('Check at least one vocal track.');return a;}
-function settings(){return Object.fromEntries(['root','scale','strength','timing','bpm','grid','guide','view'].map(id=>[id,$(id).value]));}
+async function useChordGuide(index) {
+  const t=tracks[index];
+  if(t?.role!=='reference'){chordSource=-1;return;}
+  if(!t.harmony){
+    status('Listening to chords in '+t.name+'…');
+    t.harmony=await dsp('harmony',t.channels,t.rate);
+  }
+  chordSource=index;
+  status(t.harmony.frames.some(Boolean)?'Chord guide ready · '+t.name:'No clear chords detected. Vocal notes will be left for review.');
+}
+function chordGuide(){return tracks[chordSource]?.harmony||null;}
+$('chordGuide').onchange=e=>run(async()=>{stop();await useChordGuide(+e.target.value);dirty=true;});
+$('importBacking').onclick=()=>$('backingFile').click();
+$('backingFile').onchange=e=>run(async()=>{
+  try{
+    const file=e.target.files[0];if(!file)return;
+    await addFiles([{name:file.name,role:'reference',selected:false,...decodeWav(await file.arrayBuffer())}]);
+    await useChordGuide(tracks.length-1);
+  }finally{e.target.value='';}
+});
+function settings(){return Object.fromEntries(['root','scale','strength','timing','bpm','grid','guide','view','chordGuide'].map(id=>[id,$(id).value]));}
 async function importWavs(files) {
   const list=[];
   for(const file of files)list.push({name:file.name,...decodeWav(await file.arrayBuffer())});
@@ -899,13 +1159,13 @@ $('audioFiles').onchange=e=>run(async()=>{try{await importWavs(e.target.files);}
 $('projectFile').onchange=e=>run(async()=>{
   try{
     const f=e.target.files[0];if(!f||!mayReplace())return;
-    const obj=readProject(await f.arrayBuffer());await addFiles(obj.tracks,true);refresh();
+    const obj=readProject(await f.arrayBuffer());await addFiles(obj.tracks,true);await useChordGuide(Number(obj.settings.chordGuide??-1));refresh();
     for(const [id,v] of Object.entries(obj.settings))if(['root','scale','strength','timing','bpm','grid','guide','view'].includes(id))$(id).value=v;
     title(f.name.replace(/\.zpitch$/i,''));dirty=false;status('Project restored with original audio and editable notes.');
   }finally{e.target.value='';}
 });
 $('newProject').onclick=()=>{
-  if(!mayReplace())return;stop();tracks.length=0;active=0;selected=-1;position=0;
+  if(!mayReplace())return;stop();tracks.length=0;chordSource=-1;active=0;selected=-1;position=0;
   undoStack.length=redoStack.length=0;dirty=false;title('Untitled project');refresh();status('Ready to import stems.');
 };
 $('openProject').onclick=()=>$('projectFile').click();
@@ -924,15 +1184,15 @@ $('export').onclick=()=>run(async()=>{
   download(zipStems(files),safeName(projectTitle)+' - stems.zip');status('Exported '+files.length+' time-aligned, 24-bit WAV stems.');
 });
 $('stem').onclick=()=>run(async()=>{const t=current();if(t){download(new Blob([wavBytes(await rendered(t),t.rate)],{type:'audio/wav'}),safeName(t.name)+' - edited.wav');status('Active stem exported.');}});
-$('tune').onclick=()=>run(()=>{const a=targets();remember();for(const t of a){tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100);invalidate(t);}status('Pitch pass applied to '+a.length+' track(s).');});
+$('tune').onclick=()=>run(()=>{const a=targets();remember();for(const t of a){tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100,chordGuide());invalidate(t);}status('Pitch pass applied to '+a.length+' track(s).');});
 $('quant').onclick=()=>run(()=>{const a=targets(),bpm=+$('bpm').value;if(bpm<20||bpm>400)throw Error('Set a tempo between 20 and 400 BPM.');remember();for(const t of a){quantize(t.notes,t.channels[0].length/t.rate,bpm,+$('grid').value,+$('timing').value/100);invalidate(t);}status('Timing pass applied.');});
 $('firstpass').onclick=()=>run(()=>{
   const a=targets(),bpm=+$('bpm').value;
   if(bpm<20||bpm>400)throw Error('Set a tempo between 20 and 400 BPM.');
   remember();
   for(const t of a){
-    tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100);
     quantize(t.notes,t.channels[0].length/t.rate,bpm,+$('grid').value,+$('timing').value/100);
+    tuneNotes(t.notes,+$('root').value,$('scale').value,+$('strength').value/100,chordGuide());
     invalidate(t);
   }
   status('Pitch and timing pass applied. Click a note to refine it.');
@@ -986,7 +1246,9 @@ function adjust(id,value) {
   const left=prev?prev.e+prev.offset+prev.length:0,right=next?next.s+next.offset:t.channels[0].length/t.rate;
   if(id==='offset')value=clamp(value,left-n.s,right-(end-start)-n.s);
   if(id==='length')value=clamp(value,.012-(n.e-n.s),right-start-(n.e-n.s));
-  n[id]=value;invalidate(t);
+  n[id]=value;
+  if(id==='pitch'){n.pitchLocked=true;delete n.pitchReview;}
+  invalidate(t);
 }
 function splitNote(at) {
   const t=current(),n=note();if(!n)return;
@@ -1008,12 +1270,15 @@ function mergeNext(){
 }
 $('split').onclick=()=>splitNote(position);$('merge').onclick=mergeNext;
 $('hard').onclick=()=>{if(note()){remember();note().hard=!note().hard;invalidate(current());refresh();}};
-$('reset').onclick=()=>{const n=note();if(n){remember();Object.assign(n,defaultNote(n.s,n.e,n.p,n.confidence));applyTiming(current().notes,current().channels[0].length/current().rate,x=>[x.s+x.offset,x.e+x.offset+x.length]);invalidate(current());refresh();}};
+$('keepPitch').onclick=()=>{if(note()){remember();adjust('pitch',0);refresh();}};
+$('reset').onclick=()=>{const n=note();if(n){remember();Object.assign(n,defaultNote(n.s,n.e,n.p,n.confidence));delete n.pitchLocked;delete n.pitchReview;applyTiming(current().notes,current().channels[0].length/current().rate,x=>[x.s+x.offset,x.e+x.offset+x.length]);invalidate(current());refresh();}};
 function trackList(){
   $('tracks').replaceChildren();
+  $('chordGuide').replaceChildren(opt('Key and scale only',-1));
   const guide=$('guide').dataset.pending??$('guide').value;delete $('guide').dataset.pending;$('guide').replaceChildren();
   tracks.forEach((t,i)=>{
     $('guide').add(opt(t.name,i));
+    if(t.role==='reference')$('chordGuide').add(opt(t.name,i));
     const row=document.createElement('div');row.className='track'+(active===i?' active':'');row.style.setProperty('--color',t.color);
     const bar=document.createElement('div');bar.className='trackTop';
     const check=document.createElement('input');check.type='checkbox';check.checked=t.selected;check.setAttribute('aria-label','Include '+t.name+' in correction');check.onchange=()=>{t.selected=check.checked;dirty=true;};
@@ -1026,17 +1291,34 @@ function trackList(){
     row.append(bar);
     const extra=document.createElement('div');extra.className='trackExtra';
     const role=document.createElement('select');role.setAttribute('aria-label','Role for '+t.name);role.add(opt('Vocal','vocal'));role.add(opt('Reference','reference'));role.value=t.role;
-    role.onchange=()=>{stop();t.role=role.value;selected=-1;invalidate(t);refresh();};extra.append(role);
+    role.onchange=()=>run(async()=>{
+      stop();
+      if(role.value==='vocal'&&!t.pitchAnalyzed){
+        status('Detecting vocal notes in '+t.name+'…');
+        const analysis=await dsp('analyze',t.channels[0],t.rate);
+        t.frames=analysis.frames;t.notes=analysis.notes;t.slow=slowContour(t.frames);t.pitchAnalyzed=true;
+        undoStack.length=redoStack.length=0;
+      }
+      t.role=role.value;
+      if(i===chordSource&&t.role!=='reference')chordSource=-1;
+      selected=-1;invalidate(t);
+    });extra.append(role);
     const label=document.createElement('label'),range=document.createElement('input');label.textContent='Tightness ';range.type='range';range.min=0;range.max=100;range.value=Math.round(t.tight*100);
     range.title=range.value+'%';range.oninput=()=>{t.tight=+range.value/100;range.title=range.value+'%';dirty=true;};label.append(range);extra.append(label);row.append(extra);$('tracks').append(row);
   });
+  $('chordGuide').value=String(chordSource);
   if(tracks[+guide])$('guide').value=String(+guide);
 }
 function inspector() {
   const n=note(),can=!!n&&current().role==='vocal';
   $('noteLabel').textContent=can?noteName(n.p+n.pitch)+' · '+Math.round((n.e-n.s+n.length)*1000)+' ms':'Select a vocal note';
+  if(can && n.pitchLocked)$('noteLabel').textContent+=' · Manual pitch';
+  else if(can && n.pitchReview){
+    const review=n.pitchReview;
+    $('noteLabel').textContent+=' · '+(review.reason||'Chord '+names[review.root]+review.suffix+' → '+noteName(review.target));
+  }
   for(const [id,,, ,step,factor=1] of controls){const input=spans.get(id);input.disabled=!can;input.value=can?Number((n[id]*factor).toFixed(step<1?2:0)):'';}
-  for(const id of ['reset','hard','split'])$(id).disabled=!can;
+  for(const id of ['reset','hard','split','keepPitch'])$(id).disabled=!can;
   $('merge').disabled=!can||selected===current()?.notes.length-1;$('hard').textContent=n?.hard?'Hard boundary':'Soft boundary';
 }
 function refresh(){
@@ -1046,7 +1328,7 @@ function refresh(){
   $('strengthOut').textContent=$('strength').value+'%';$('timeOut').textContent=$('timing').value+'%';draw();
 }
 function draw(){
-  const total=duration()||8,width=Math.max(260,$('timeline').clientWidth-2),left=52,top=29;
+  const total=duration()||8,width=Math.max(260,$('timeline').clientWidth-2),left=52,top=chordGuide()?51:29;
   const visible=tracks.map((t,i)=>({t,i})).filter(x=>x.t.visible);
   const overlay=$('view').value==='overlay', rows=overlay?1:Math.max(1,visible.length);
   const h=overlay?310:Math.max(110,Math.min(230,320/rows)), height=Math.max(252,top+rows*h);
@@ -1060,6 +1342,19 @@ function draw(){
   ctx.font='10px monospace';ctx.lineWidth=1;
   for(let t=Math.ceil(origin/step)*step;t<=origin+span+.0001;t+=step){
     ctx.fillStyle='#a4afaa';ctx.fillText(seconds(t),x(t)+3,16);ctx.strokeStyle='#2e3837';ctx.beginPath();ctx.moveTo(x(t),top);ctx.lineTo(x(t),height);ctx.stroke();
+  }
+  const harmony=chordGuide();
+  if(harmony){
+    ctx.fillStyle='#99c8b2';ctx.fillText('CHORD',5,38);
+    let previous=null, nextLabel=left;
+    for(let i=Math.floor(origin/CHORD_HOP);i<harmony.frames.length&&i*CHORD_HOP<origin+span;i++){
+      const chord=harmony.frames[i], name=chord?names[chord.root]+chord.suffix:'—';
+      const xx=Math.max(left,x(i*CHORD_HOP));
+      if(name!==previous && xx>=nextLabel){
+        ctx.fillText(name,xx+3,38);nextLabel=xx+ctx.measureText(name).width+7;
+      }
+      previous=name;
+    }
   }
   const pitchRange=members=>{
     let lo=Infinity,hi=-Infinity;
