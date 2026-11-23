@@ -1,0 +1,34 @@
+name: Standalone beta check
+on: [push, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  mac-beta:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python3 tools/build.py --mac
+      - run: git diff --exit-code -- Zang-Pitch-Correction-AI.html
+      - run: node tests/audio.cjs
+      - run: npm install --prefix "$RUNNER_TEMP/browser-test" --no-package-lock --no-audit --no-fund playwright@1.55.0
+      - name: Exercise the offline editor in Chrome
+        run: |
+          export NODE_PATH="$RUNNER_TEMP/browser-test/node_modules"
+          export CHROMIUM_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+          node tests/ui.cjs
+      - name: Verify macOS launcher
+        run: |
+          unzip -q dist/*.zip -d "$RUNNER_TEMP/zang-beta"
+          app="$RUNNER_TEMP/zang-beta/Zang Pitch Correction AI.app"
+          plutil -lint "$app/Contents/Info.plist"
+          test -x "$app/Contents/MacOS/ZangPitch"
+          open "$app"
+          for i in {1..15}; do
+            if pgrep -f 'Google Chrome.*--app=file:.*Zang-Pitch-Correction-AI.html' >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1

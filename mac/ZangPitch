@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+resources=$(cd "$(dirname "$0")/../Resources" && pwd)
+editor="$resources/Zang-Pitch-Correction-AI.html"
+# AppleScript's POSIX file coercion correctly escapes spaces and Unicode for file URLs.
+location=$(/usr/bin/osascript -l JavaScript -e 'ObjC.import("Foundation"); function run(argv){return ObjC.unwrap($.NSURL.fileURLWithPath(argv[0]).absoluteString)}' "$editor")
+for apps in "/Applications" "$HOME/Applications"; do
+    chrome="$apps/Google Chrome.app/Contents/MacOS/Google Chrome"
+    if [ -x "$chrome" ]; then
+        exec "$chrome" "--app=$location" "--user-data-dir=$HOME/Library/Application Support/Zang Pitch Correction AI/Browser" --no-first-run --no-default-browser-check
+    fi
+done
+exec /usr/bin/open "$editor"

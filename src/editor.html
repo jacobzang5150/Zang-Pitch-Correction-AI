@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Zang Pitch Correction AI</title>
+<style>/* STYLE */</style></head><body>
+<header><div class="brand"><b class="mark" aria-hidden="true">∿</b><div><h1>Zang <span>Pitch Correction</span></h1><small>STANDALONE BETA · 0.1</small></div></div>
+<nav><button id="newProject">New</button><button id="openProject">Open project</button><button id="save">Save project</button><button id="export" class="accent">Export stems ↗</button></nav></header>
+<div class="layout"><aside><div class="section"><h2>Tracks</h2><span id="trackCount">0</span></div>
+<button id="import" class="full">＋ Import WAVs</button><div id="tracks"></div>
+<div class="panel"><h2>First pass</h2><div class="pair"><label>Key<select id="root"></select></label><label>Scale<select id="scale"><option value="chromatic">Chromatic</option><option value="major">Major</option><option value="minor">Minor</option></select></label></div>
+<label>Pitch strength <output id="strengthOut">85%</output><input type="range" id="strength" min="0" max="100" value="85"></label><button id="tune" class="full teal">Tune checked tracks</button>
+<h3>Timing</h3><div class="pair"><label>Tempo<input type="number" id="bpm" min="20" max="400" value="120"></label><label>Grid<select id="grid"><option value="4">1/4</option><option value="8" selected>1/8</option><option value="16">1/16</option><option value="12">1/8 triplet</option></select></label></div>
+<label>Timing strength <output id="timeOut">65%</output><input type="range" id="timing" min="0" max="100" value="65"></label><button id="quant" class="full">Correct to grid</button><button id="firstpass" class="full teal">Tune + correct timing</button>
+<h3>BGV alignment</h3><label>Guide track<select id="guide"></select></label><button id="align" class="full">Align checked BGVs</button></div></aside>
+<main><div class="editHead"><div><small>VOCAL EDITOR</small><h2 id="projectTitle">Untitled project</h2></div><select id="view" aria-label="Track view"><option value="stacked">Stacked lanes</option><option value="overlay">Pitch overlay</option></select></div>
+<div class="toolbar"><label>Mouse tool <select id="tool"></select></label><button id="undo" title="Undo (⌘Z)">↶ Undo</button><button id="redo" title="Redo (⇧⌘Z)">↷ Redo</button><label class="zoom">Zoom <input id="zoom" type="range" min="1" max="24" value="1"></label></div>
+<div id="timeline"><canvas id="canvas" aria-label="Vocal pitch timeline"></canvas><div id="empty"><div class="wave" aria-hidden="true">∿</div><h2>Drop your vocal stems here</h2><p>Import WAVs with the same start time, or try a three-part demo.</p><button id="demo">Load demo stack</button></div></div>
+<label class="pan">Timeline position <input id="pan" type="range" min="0" max="1000" value="0"></label>
+<div class="transport"><button id="play" class="accent">▶ Play</button><button id="rewind" title="Return to start">↤</button><strong id="clock">0:00.00</strong><button id="ab" aria-pressed="false">Listen: Edited</button><span id="duration"></span></div>
+<div id="inspector"><div class="section"><h2>Note inspector</h2><span id="noteLabel">Select a note</span></div><div id="fields"></div><div class="actions"><button id="split">Split at cursor</button><button id="merge">Merge next</button><button id="hard">Soft boundary</button><button id="reset">Reset note</button><button id="stem">Export active WAV</button></div></div>
+<footer role="status" id="status">Ready</footer></main></div>
+<input type="file" id="audioFiles" multiple accept=".wav,.wave,audio/wav" hidden><input type="file" id="projectFile" accept=".zpitch" hidden>
+<script id="dsp-source" type="text/plain">/* ENGINE */</script><script>/* APP */</script></body></html>
